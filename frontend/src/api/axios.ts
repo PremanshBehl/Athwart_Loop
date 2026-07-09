@@ -1,5 +1,11 @@
 import axios from 'axios';
 
+declare module 'axios' {
+  export interface AxiosResponse<T = any> {
+    meta?: any;
+  }
+}
+
 const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL ?? '/api',
   headers: { 'Content-Type': 'application/json' },
@@ -24,7 +30,7 @@ api.interceptors.response.use(
     // Our backend uses successResponse util which wraps the actual payload in a 'data' field.
     // Unwrapping it here saves us from doing data.data in every store.
     if (res.data && res.data.success !== undefined && res.data.data !== undefined) {
-      (res as any).meta = res.data.meta; // Preserve meta (like nextCursor) on the response object
+      res.meta = res.data.meta; // Preserve meta (like nextCursor) on the response object
       res.data = res.data.data;
     }
     return res;
@@ -33,8 +39,7 @@ api.interceptors.response.use(
     if (err.response?.status === 401) {
       const isAuthRoute = err.config?.url?.includes('/auth/login') || err.config?.url?.includes('/auth/register');
       if (!isAuthRoute) {
-        localStorage.removeItem('token');
-        window.location.href = '/login';
+        window.dispatchEvent(new Event('auth:unauthorized'));
       }
     }
     return Promise.reject(err);

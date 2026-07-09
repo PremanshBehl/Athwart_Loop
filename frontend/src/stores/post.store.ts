@@ -78,6 +78,7 @@ export const usePostStore = create<PostState>((set, get) => ({
       });
       get().fetchStats();
     } catch {
+      toast.error('Failed to load feed');
       set({ loading: false });
     }
   },
@@ -112,6 +113,7 @@ export const usePostStore = create<PostState>((set, get) => ({
       ]);
       set({ current: { ...post, comments }, loading: false });
     } catch {
+      toast.error('Failed to load post');
       if (!background) set({ loading: false });
     }
   },
@@ -138,7 +140,6 @@ export const usePostStore = create<PostState>((set, get) => ({
         feed: s.feed.map((p) => (p.id === id ? { ...p, ...data } : p)),
         current: s.current?.id === id ? { ...s.current, ...data } : s.current,
       }));
-      await get().fetchFeed(get().lastFilters);
       toast.success('Post updated');
       return data;
     } catch (error: any) {
@@ -173,7 +174,6 @@ export const usePostStore = create<PostState>((set, get) => ({
     try {
       await api.post(`/posts/${id}/react`, { emoji });
       if (get().current?.id === id) await get().fetchPost(id, true);
-      else await get().fetchFeed(get().lastFilters);
     } catch (error: any) {
       toast.error(error.response?.data?.message || 'Failed to react');
     }

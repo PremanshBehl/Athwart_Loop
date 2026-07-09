@@ -10,7 +10,7 @@ import { config } from '../config/env.config';
 
 /* ---------- REGISTER ---------- */
 export const register = async (req: Request, res: Response) => {
-  const { email, password, name, role, bio, avatarUrl } = req.body;
+  const { email, password, name, bio, avatarUrl } = req.body;
 
   const existing = await prisma.user.findUnique({ where: { email } });
   if (existing) {
@@ -19,7 +19,7 @@ export const register = async (req: Request, res: Response) => {
 
   const passwordHash = await bcrypt.hash(password, 10);
   const user = await prisma.user.create({
-    data: { email, passwordHash, name, role, bio, avatarUrl },
+    data: { email, passwordHash, name, role: 'FRONTEND', bio, avatarUrl },
   });
 
   const payload: JwtPayload = {

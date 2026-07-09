@@ -6,12 +6,7 @@ import { AppError } from '../utils/AppError';
 import { successResponse } from '../utils/response.util';
 import { kbNominationService } from '../services/intelligence/kb-nomination.service';
 
-function requireAdmin(req: Request) {
-  const role = req.user!.role;
-  if (role !== 'ADMIN' && role !== 'FOUNDER') {
-    throw new AppError('Admin/Founder only', StatusCodes.FORBIDDEN, 'FORBIDDEN');
-  }
-}
+
 
 const SECTIONS: Section[] = [
   'BILLS', 'INVOICING', 'PATIENTS', 'CASES', 'PARTNERS',
@@ -21,7 +16,6 @@ const SECTIONS: Section[] = [
 /* ---------- SECTION OWNERSHIP (handbook B7) ---------- */
 
 export const listSectionOwners = async (req: Request, res: Response) => {
-  requireAdmin(req);
   const rows = await prisma.sectionOwnership.findMany({
     include: { owner: { select: { id: true, name: true, role: true, avatarUrl: true } } },
   });
@@ -37,7 +31,6 @@ export const listSectionOwners = async (req: Request, res: Response) => {
 };
 
 export const setSectionOwner = async (req: Request, res: Response) => {
-  requireAdmin(req);
   const section = req.params.section as Section;
   if (!SECTIONS.includes(section)) {
     throw new AppError('Unknown section', StatusCodes.BAD_REQUEST, 'INVALID_SECTION');
@@ -65,7 +58,6 @@ export const setSectionOwner = async (req: Request, res: Response) => {
 /* ---------- KB SWEEP (handbook B6) ---------- */
 
 export const listKbCandidates = async (req: Request, res: Response) => {
-  requireAdmin(req);
   const items = await prisma.post.findMany({
     where: {
       isUseCase: true,
@@ -90,13 +82,11 @@ export const listKbCandidates = async (req: Request, res: Response) => {
 // rules, and returns nominations. The lead flags graduation by hand — this
 // endpoint never mutates.
 export const kbNominations = async (req: Request, res: Response) => {
-  requireAdmin(req);
   const nominations = await kbNominationService.nominateCandidates();
   return successResponse(res, 'KB nominations generated', nominations);
 };
 
 export const sweepToKb = async (req: Request, res: Response) => {
-  requireAdmin(req);
   const id = Number(req.params.id);
   if (!Number.isInteger(id) || id <= 0) {
     throw new AppError('Invalid post ID', StatusCodes.BAD_REQUEST, 'INVALID_ID');

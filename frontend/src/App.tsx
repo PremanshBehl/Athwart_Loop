@@ -1,5 +1,5 @@
-import React from 'react';
-import { Routes, Route, Navigate } from 'react-router-dom';
+import React, { useEffect } from 'react';
+import { Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
 import ProtectedRoute from '@/routes/ProtectedRoute';
 import AppLayout from '@/components/layout/AppLayout';
@@ -18,9 +18,31 @@ import AdminKbSweepPage from '@/pages/AdminKbSweepPage';
 import AdminCampaignsPage from '@/pages/AdminCampaignsPage';
 import CampaignsPage from '@/pages/CampaignsPage';
 import CampaignDetailPage from '@/pages/CampaignDetailPage';
+import { useAuthStore } from '@/stores/auth.store';
+import Loader from '@/components/shared/Loader';
 
-const App: React.FC = () => (
-  <>
+const App: React.FC = () => {
+  const { loading, logout, checkAuth } = useAuthStore();
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    checkAuth();
+
+    const handleUnauthorized = () => {
+      logout();
+      navigate('/login');
+    };
+
+    window.addEventListener('auth:unauthorized', handleUnauthorized);
+    return () => window.removeEventListener('auth:unauthorized', handleUnauthorized);
+  }, [checkAuth, logout, navigate]);
+
+  if (loading) {
+    return <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900"><Loader /></div>;
+  }
+
+  return (
+    <>
     <Toaster position="bottom-right" />
     <Routes>
       {/* Public */}
@@ -54,6 +76,7 @@ const App: React.FC = () => (
       <Route path="*" element={<Navigate to="/feed" replace />} />
     </Routes>
   </>
-);
+  );
+};
 
 export default App;

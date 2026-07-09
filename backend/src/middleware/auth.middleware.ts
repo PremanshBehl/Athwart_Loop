@@ -35,17 +35,19 @@ export const authenticate = async (
   // which are automatically caught by our error.middleware
   const payload = jwt.verify(token, config.JWT_SECRET) as JwtPayload;
 
-  const user = await prisma.user.findUnique({ where: { id: payload.userId } });
-  if (!user) {
-    throw new AppError('User not found', StatusCodes.UNAUTHORIZED, 'USER_NOT_FOUND');
-  }
-
   req.user = {
-    id: user.id,
-    role: user.role,
-    email: user.email,
-    name: user.name,
+    id: payload.userId,
+    role: payload.role,
+    email: payload.email,
+    name: payload.name,
   };
   
+  next();
+};
+
+export const requireAdmin = (req: Request, res: Response, next: NextFunction) => {
+  if (req.user?.role !== 'ADMIN' && req.user?.role !== 'FOUNDER') {
+    throw new AppError('Forbidden. Admin access required.', StatusCodes.FORBIDDEN, 'FORBIDDEN');
+  }
   next();
 };
