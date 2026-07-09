@@ -569,7 +569,7 @@ export const getLoopHealth = async (req: Request, res: Response) => {
     resolvedSample,
     sectionCounts,
     sectionOpenCounts,
-    sectionBreachedCounts,
+    breachedPosts,
   ] = await Promise.all([
     prisma.post.count({ where: { status: Status.OPEN } }),
     prisma.post.count({ where: { status: Status.OPEN, acknowledgedAt: null } }),
@@ -596,12 +596,18 @@ export const getLoopHealth = async (req: Request, res: Response) => {
     }),
     prisma.post.groupBy({ by: ['section'], _count: { _all: true } }),
     prisma.post.groupBy({ by: ['section'], where: { status: Status.OPEN }, _count: { _all: true } }),
-    prisma.post.groupBy({
-      by: ['section'],
+    prisma.post.findMany({
       where: { workflowMetrics: { slaStatus: 'BREACHED' } },
-      _count: { _all: true },
+      select: { section: true },
     }),
   ]);
+
+  const sectionBreachedCounts = Object.entries(
+    breachedPosts.reduce((acc, p) => {
+      acc[p.section] = (acc[p.section] || 0) + 1;
+      return acc;
+    }, {} as Record<string, number>)
+  ).map(([section, count]) => ({ section, _count: { _all: count } }));
 
   const ackDeltas = ackSample
     .map((p) => (p.acknowledgedAt ? p.acknowledgedAt.getTime() - p.createdAt.getTime() : null))
