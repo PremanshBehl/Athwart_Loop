@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import athwartLogo from '@/assets/athwart-logo.jpg';
 import { NavLink, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '@/stores/auth.store';
 import { useNotificationStore } from '@/stores/notification.store';
@@ -76,12 +77,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
       {/* Logo */}
       <div className="px-6 h-[84px] border-b border-gray-100 flex items-center justify-between shrink-0">
         <div className="flex items-center gap-3">
-          <div className="text-brand-primary">
-            <svg viewBox="0 0 100 100" className="w-8 h-8 fill-current" xmlns="http://www.w3.org/2000/svg">
-              <path d="M40.5,15.5 C45,5 55,5 59.5,15.5 L80,62 C85,73 70,80 62.5,70 L55,58 L45,58 C35,58 20,70 15,60 L20,48 Z" />
-              <circle cx="70" cy="50" r="8" />
-            </svg>
-          </div>
+          <img src={athwartLogo} alt="Athwart logo" className="w-12 h-12 object-contain" />
           <div className="flex items-baseline gap-1.5">
             <p className="font-bold text-gray-900 text-[20px] tracking-tight leading-none">athwart</p>
             <p className="font-heading italic text-brand-primary text-[15px] leading-none">Loop</p>

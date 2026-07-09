@@ -5,7 +5,7 @@ import { Menu, Plus } from 'lucide-react';
 
 const PAGE_TITLES: Record<string, string> = {
   '/dashboard':     'Dashboard',
-  '/feed':          'Loop',
+  '/feed':          '',
   '/archive':       'Memory Archive',
   '/notifications': 'Notifications',
   '/profile':       'My contributions',
@@ -25,7 +25,7 @@ const Topbar: React.FC<TopbarProps> = ({ onMenuClick }) => {
   const { pathname } = useLocation();
   const [modalOpen, setModalOpen] = useState(false);
 
-  const title = PAGE_TITLES[pathname] ?? 'Athwart Loop';
+  const title = PAGE_TITLES[pathname] ?? '';
 
   return (
     <>

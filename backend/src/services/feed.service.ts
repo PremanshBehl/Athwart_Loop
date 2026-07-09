@@ -3,21 +3,26 @@ import { AppError } from '../utils/AppError';
 import { FeedCardDTO, CommentDTO, mapToFeedCardDTO, mapToCommentDTO } from '../dtos/feed.dto';
 import { CursorObj, buildPaginatedResult, encodeCursor, decodeCursor } from '../utils/pagination.util';
 
-// Handbook C4 / Increment I3: search via the generated tsvector + GIN index.
-// Returns a rank-ordered list of matching Post ids (capped) so the caller can
-// combine with other filters via `id: { in: ... }`.
+// Handbook C4: search by ILIKE across title, description, refCode.
+// Supports partial/prefix matching (e.g. "k" matches "kjnkrk").
 async function searchPostIds(term: string, limit = 200): Promise<number[]> {
   const query = term.trim();
   if (!query) return [];
+  const ilike = `%${query}%`;
   const rows = await prisma.$queryRaw<Array<{ id: number }>>`
-    SELECT id
-    FROM "Post"
-    WHERE "searchVector" @@ plainto_tsquery('english', ${query})
-    ORDER BY ts_rank("searchVector", plainto_tsquery('english', ${query})) DESC
+    SELECT id FROM "Post"
+    WHERE
+      title       ILIKE ${ilike}
+      OR description ILIKE ${ilike}
+      OR "refCode"   ILIKE ${ilike}
+    ORDER BY
+      CASE WHEN title ILIKE ${ilike} THEN 0 ELSE 1 END,
+      id DESC
     LIMIT ${limit}
   `;
   return rows.map((r) => r.id);
 }
+
 
 export type PaginatedFeedResult = {
   items: FeedCardDTO[];

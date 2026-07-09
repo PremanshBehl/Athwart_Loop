@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" fill="none">
+  <!-- Outer loop forming stylized A -->
+  <path
+    d="M60 160 C30 150 25 110 40 80 C55 50 80 30 100 25 C120 20 145 35 155 60 C165 85 155 120 135 140 C120 155 100 162 82 158 C72 156 64 150 60 160 Z"
+    stroke="#7B00FF"
+    stroke-width="11"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    fill="none"
+  />
+  <!-- Tail swoosh -->
+  <path
+    d="M130 145 C145 148 160 155 168 168"
+    stroke="#7B00FF"
+    stroke-width="11"
+    stroke-linecap="round"
+    fill="none"
+  />
+  <!-- Dot -->
+  <circle cx="152" cy="118" r="11" fill="#7B00FF"/>
+</svg>

@@ -1,7 +1,7 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { motion, Variants } from 'framer-motion';
-import { Search, Filter, FileText, Plus, Inbox } from 'lucide-react';
+import { Search, Filter, Plus, Inbox } from 'lucide-react';
 import api from '@/api/axios';
 import { usePostStore } from '@/stores/post.store';
 import { useAuthStore } from '@/stores/auth.store';
@@ -31,7 +31,9 @@ const FeedPage: React.FC = () => {
 
   // Read initial state from URL so sidebar links (?section=BILLS, ?mine=1)
   // and legacy /archive redirects (?status=RESOLVED) hydrate correctly.
-  const [search, setSearch]     = useState(searchParams.get('q') ?? '');
+  const [search, setSearch]         = useState(searchParams.get('q') ?? '');
+  const [debouncedSearch, setDebouncedSearch] = useState(search);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [type, setType]         = useState(searchParams.get('type') ?? '');
   const [section, setSection]   = useState(searchParams.get('section') ?? '');
   const [status, setStatus]     = useState(searchParams.get('status') ?? 'NEEDS_RESPONSE');
@@ -78,6 +80,13 @@ const FeedPage: React.FC = () => {
       .finally(() => setOwnersLoading(false));
   }, []);
 
+  // Debounce search input — only fire API after 300ms idle
+  useEffect(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => setDebouncedSearch(search), 300);
+    return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
+  }, [search]);
+
   // Fetch feed on filter changes
   useEffect(() => {
     // Handbook D1: "Open / needs response" → status=OPEN + needResponse
@@ -88,7 +97,7 @@ const FeedPage: React.FC = () => {
       isNeedsResponse ? 'OPEN' : status;
 
     fetchFeed({
-      search,
+      search: debouncedSearch,
       type,
       section,
       status: effectiveStatus,
@@ -96,7 +105,7 @@ const FeedPage: React.FC = () => {
       ownerId: ownerId ? Number(ownerId) : undefined,
       authorId: authorId ? Number(authorId) : undefined,
     });
-  }, [search, type, section, status, ownerId, authorId, viewMode]);
+  }, [debouncedSearch, type, section, status, ownerId, authorId, viewMode]);
 
   const hasActiveFilters = type || section || (status && status !== 'NEEDS_RESPONSE') || search || ownerId || authorId;
   const selectedOwner = owners.find((c) => String(c.id) === ownerId);
@@ -221,10 +230,6 @@ const FeedPage: React.FC = () => {
 
       <div className="flex flex-col sm:flex-row sm:items-center justify-between px-2 gap-4">
         <div className="flex items-center gap-4">
-          <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
-            <FileText size={18} className="text-brand-primary" />
-            Loop
-          </h2>
           <span className="text-xs font-bold bg-gray-100 text-gray-700 px-3 py-1 rounded-full border border-gray-200">
             {stats.totalActive} open · {stats.myActiveTasks} need your answer
           </span>
