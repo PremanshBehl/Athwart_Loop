@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { authenticate } from '../middleware/auth.middleware';
+import { authenticate, requireAdmin } from '../middleware/auth.middleware';
 import {
   listCampaigns,
   getCampaign,
@@ -14,8 +14,8 @@ const router = Router();
 
 router.get('/',    authenticate, listCampaigns);
 router.get('/:id', authenticate, getCampaign);
-router.post('/',   authenticate, createCampaign);
-router.patch('/:id/close',   authenticate, closeCampaign);
-router.patch('/:id/winner',  authenticate, pickWinner);
+router.post('/',   authenticate, requireAdmin, createCampaign);
+router.patch('/:id/close',   authenticate, requireAdmin, closeCampaign);
+router.patch('/:id/winner',  authenticate, requireAdmin, pickWinner);
 
 export default router;

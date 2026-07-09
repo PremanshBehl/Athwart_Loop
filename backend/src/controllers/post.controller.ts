@@ -9,6 +9,12 @@ import { mentionService } from '../services/mention.service';
 import { getSectionOwner } from '../utils/section.util';
 import { Type, Section, Status } from '@prisma/client';
 import { semanticSearchService } from '../services/search/semantic-search.service';
+import { feedService } from '../services/feed.service';
+import { getFeedSchema, getCommentsSchema } from '../validations/v1/feed.validation';
+import { notificationService } from '../services/notification.service';
+import { workflowService } from '../services/workflow.service';
+import { auditService } from '../services/audit.service';
+import { eventBus, INTERNAL_EVENTS } from '../services/events/internal.emitter';
 
 /* ---------- CREATE POST ---------- */
 export const createPost = async (req: Request, res: Response) => {
@@ -104,8 +110,7 @@ export const createPost = async (req: Request, res: Response) => {
   return successResponse(res, 'Post created successfully', post, {}, StatusCodes.CREATED);
 };
 
-import { feedService } from '../services/feed.service';
-import { getFeedSchema, getCommentsSchema } from '../validations/v1/feed.validation';
+
 
 /* ---------- GET FEED ---------- */
 export const getFeed = async (req: Request, res: Response) => {
@@ -176,11 +181,7 @@ export const getPost = async (req: Request, res: Response) => {
   return successResponse(res, 'Post retrieved', hydrated);
 };
 
-import { notificationService } from '../services/notification.service';
 
-import { workflowService } from '../services/workflow.service';
-import { auditService } from '../services/audit.service';
-import { eventBus, INTERNAL_EVENTS } from '../services/events/internal.emitter';
 
 /* ---------- UPDATE POST STATUS (AND ASSIGNEE) ---------- */
 export const updateStatus = async (req: Request, res: Response) => {

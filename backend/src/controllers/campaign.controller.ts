@@ -5,12 +5,7 @@ import { AppError } from '../utils/AppError';
 import { successResponse } from '../utils/response.util';
 import { notificationService } from '../services/notification.service';
 
-function requireAdmin(req: Request) {
-  const role = req.user!.role;
-  if (role !== 'ADMIN' && role !== 'FOUNDER') {
-    throw new AppError('Admin/Founder only', StatusCodes.FORBIDDEN, 'FORBIDDEN');
-  }
-}
+
 
 const campaignSelect = {
   id: true, title: true, prompt: true, themeTag: true,
@@ -72,7 +67,6 @@ export const getCampaign = async (req: Request, res: Response) => {
 
 /* ---------- CREATE CAMPAIGN (admin) ---------- */
 export const createCampaign = async (req: Request, res: Response) => {
-  requireAdmin(req);
   const { title, prompt, themeTag, endsAt, startsAt } = req.body ?? {};
   if (typeof title !== 'string' || title.trim().length < 3) {
     throw new AppError('title must be at least 3 characters', StatusCodes.BAD_REQUEST, 'VALIDATION_ERROR');
@@ -108,7 +102,6 @@ export const createCampaign = async (req: Request, res: Response) => {
 
 /* ---------- CLOSE CAMPAIGN (admin) ---------- */
 export const closeCampaign = async (req: Request, res: Response) => {
-  requireAdmin(req);
   const id = Number(req.params.id);
   if (!Number.isInteger(id) || id <= 0) {
     throw new AppError('Invalid campaign ID', StatusCodes.BAD_REQUEST, 'INVALID_ID');
@@ -129,7 +122,6 @@ export const closeCampaign = async (req: Request, res: Response) => {
 // Sets Campaign.winnerId and notifies the winning post's author. Handbook B8
 // step 4: "winning idea is shipped and its contributor recognised."
 export const pickWinner = async (req: Request, res: Response) => {
-  requireAdmin(req);
   const id = Number(req.params.id);
   const postId = Number(req.body?.postId);
   if (!Number.isInteger(id) || id <= 0) {

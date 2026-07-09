@@ -18,6 +18,7 @@ import campaignRoutes from './routes/campaign.routes';
 import searchRoutes from './routes/search.routes';
 import { errorHandler } from './middleware/error.middleware';
 import { tracingMiddleware } from './middleware/tracing.middleware';
+import { apiLimiter } from './middleware/rateLimit.middleware';
 import { config } from './config/env.config';
 
 const app = express();
@@ -46,6 +47,7 @@ app.use('/uploads', express.static(path.resolve(__dirname, '../../uploads'), {
 }));
 
 // Routes
+app.use('/api', apiLimiter);
 app.use('/api/auth', authRoutes);
 app.use('/api/posts', postRoutes);
 app.use('/api/comments', commentRoutes);
@@ -63,6 +65,9 @@ app.use('/api/search',    searchRoutes);
 app.get('/api/health', (_req, res) => res.json({ status: 'ok' }));
 
 // Global error handler (must be last)
+app.use((_req, res) => {
+  res.status(404).json({ success: false, message: 'Route not found', code: 'NOT_FOUND' });
+});
 app.use(errorHandler);
 
 export default app;
