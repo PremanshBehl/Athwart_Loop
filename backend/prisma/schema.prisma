@@ -1,0 +1,427 @@
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["fullTextSearchPostgres"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  FOUNDER
+  FRONTEND
+  BACKEND
+  DEVOPS
+  AI_ML
+}
+
+enum Type {
+  QUESTION
+  PROBLEM
+  IDEA
+}
+
+enum Status {
+  OPEN
+  DISCUSSING
+  RESOLVED
+}
+
+enum Section {
+  BILLS
+  INVOICING
+  PATIENTS
+  CASES
+  PARTNERS
+  HOSPITALS
+  DOCTORS
+  WHATSAPP
+  PLATFORM
+  GENERAL
+}
+
+enum Resolution {
+  ANSWERED
+  FIXED
+  APPROVED
+  PARKED
+  DECLINED
+  DUPLICATE
+  RULE_DECIDED
+}
+
+model Department {
+  id          Int     @id @default(autoincrement())
+  name        String  @unique
+  slug        String  @unique // Slugs should remain immutable to prevent broken frontend routing
+  description String?
+
+  createdAt DateTime @default(now())
+
+  users User[]
+  posts Post[]
+
+  @@index([slug])
+}
+
+model User {
+  id           Int      @id @default(autoincrement())
+  email        String   @unique
+  passwordHash String
+  name         String   @unique
+  avatarUrl    String?
+  bio          String?
+  role         Role
+  createdAt    DateTime @default(now())
+
+  // Phase 3B: MVP Department Ownership. Future: join table for multi-dept
+  departmentId Int?
+  department   Department? @relation(fields: [departmentId], references: [id])
+
+  posts         Post[]     @relation("AuthorPosts")
+  assignedPosts Post[]     @relation("AssigneePosts")
+  ownedPosts    Post[]     @relation("OwnerPosts")
+  sectionOwnerships SectionOwnership[]
+  comments      Comment[]
+  reactions     Reaction[]
+  votes         Vote[]
+  campaignsCreated Campaign[]  @relation("CampaignCreator")
+
+  // Notifications
+  notifications     Notification[] @relation("NotificationsReceived")
+  notificationsSent Notification[] @relation("NotificationActor")
+
+  // Mentions
+  mentionsGiven    Mention[] @relation("MentionsGiven")
+  mentionsReceived Mention[] @relation("MentionsReceived")
+
+  // Audit Logs
+  auditLogs AuditLog[] @relation("AuditLogsActor")
+}
+
+model Post {
+  id          Int            @id @default(autoincrement())
+  title       String
+  description String
+  postNumber       String       @unique @default("")
+  type             Type
+  status           Status       @default(OPEN)
+  section          Section
+  resolution       Resolution?
+  resolutionReason String?
+  isUseCase        Boolean      @default(false)
+  ownerId          Int?
+  owner            User?        @relation("OwnerPosts", fields: [ownerId], references: [id])
+  acknowledgedAt   DateTime?
+  linkedEntityType String?
+  linkedEntityId   String?
+  // Handbook C6: when a Problem/Idea resolves to build work, the resolver
+  // records the GitHub issue URL that will track execution.
+  buildIssueUrl    String?
+  // Handbook B6: monthly KB sweep — lead marks each RESOLVED Use Case as swept
+  // into the section knowledge base. Metadata (where it landed) is captured on
+  // the KB_SWEPT audit-log row, not duplicated on the post.
+  sweptToKb        Boolean  @default(false)
+  sweptAt          DateTime?
+  // Handbook C4: generated tsvector column + GIN index for search-first.
+  // Managed by migration 20260709120000_search_vector_gin — accessed only via raw SQL.
+  searchVector    Unsupported("tsvector")?
+  // Handbook Phase 2 · P4 pgvector embedding. Nullable until an
+  // EmbeddingProvider is enabled — accessed only via raw SQL.
+  embedding       Unsupported("vector(1536)")?
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  authorId   Int
+  author     User  @relation("AuthorPosts", fields: [authorId], references: [id])
+  assigneeId Int?
+  assignee   User? @relation("AssigneePosts", fields: [assigneeId], references: [id])
+
+  // Phase 3B: Department Workflow routing
+  departmentId Int?
+  department   Department? @relation(fields: [departmentId], references: [id])
+
+  // Handbook B8 · optional campaign tag. Only Ideas typically carry this.
+  campaignId Int?
+  campaign   Campaign? @relation("CampaignPosts", fields: [campaignId], references: [id], onDelete: SetNull)
+  campaignWinnerOf Campaign[] @relation("CampaignWinner")
+
+  comments        Comment[]
+  reactions       Reaction[]
+  votes           Vote[]
+  attachments     Attachment[]
+  mentions        Mention[]
+  notifications   Notification[]
+  auditLogs       AuditLog[]       @relation("PostAuditLogs")
+  workflowMetrics WorkflowMetrics?
+
+  @@unique([createdAt, id])
+  @@index([createdAt])
+  @@index([status])
+  @@index([type])
+  @@index([section])
+  @@index([authorId])
+  @@index([assigneeId])
+  // Phase 3B Enterprise Indexing
+  @@index([departmentId, status])
+  @@index([assigneeId, status])
+  @@index([departmentId, createdAt])
+}
+
+model Comment {
+  id        Int      @id @default(autoincrement())
+  content   String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  authorId Int
+  author   User      @relation(fields: [authorId], references: [id])
+  postId   Int
+  post     Post      @relation(fields: [postId], references: [id], onDelete: Cascade)
+  parentId Int?
+  parent   Comment?  @relation("Replies", fields: [parentId], references: [id])
+  replies  Comment[] @relation("Replies")
+  isCanonical Boolean @default(false)
+
+  reactions     Reaction[]
+  mentions      Mention[]
+  notifications Notification[]
+
+  @@unique([createdAt, id])
+  @@index([postId, createdAt, id])
+  @@index([parentId, createdAt, id])
+}
+
+model Reaction {
+  id    Int    @id @default(autoincrement())
+  emoji String @default("👍")
+
+  userId    Int
+  user      User     @relation(fields: [userId], references: [id])
+  postId    Int?
+  post      Post?    @relation(fields: [postId], references: [id], onDelete: Cascade)
+  commentId Int?
+  comment   Comment? @relation(fields: [commentId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, postId, emoji])
+  @@unique([userId, commentId, emoji])
+}
+
+// Handbook C1 · loop_votes. Composite PK enforces one vote per user per post.
+model Vote {
+  postId    Int
+  userId    Int
+  createdAt DateTime @default(now())
+
+  post Post @relation(fields: [postId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([postId, userId])
+  @@index([postId])
+  @@index([userId])
+}
+
+model Attachment {
+  id       Int    @id @default(autoincrement())
+  url      String
+  filename String
+  mimeType String
+  postId   Int
+  post     Post   @relation(fields: [postId], references: [id], onDelete: Cascade)
+}
+
+enum NotificationType {
+  MENTION
+  ASSIGNMENT
+  COMMENT_REPLY
+  POST_UPDATE
+}
+
+model Mention {
+  id            Int @id @default(autoincrement())
+  mentionedById Int
+  mentionedToId Int
+
+  postId    Int?
+  commentId Int?
+
+  createdAt DateTime @default(now())
+
+  mentionedBy User     @relation("MentionsGiven", fields: [mentionedById], references: [id])
+  mentionedTo User     @relation("MentionsReceived", fields: [mentionedToId], references: [id])
+  post        Post?    @relation(fields: [postId], references: [id], onDelete: Cascade)
+  comment     Comment? @relation(fields: [commentId], references: [id], onDelete: Cascade)
+
+  // Prevent duplicate mentions natively
+  @@unique([mentionedToId, postId])
+  @@unique([mentionedToId, commentId])
+  @@index([mentionedToId, createdAt])
+}
+
+model Notification {
+  id        Int              @id @default(autoincrement())
+  type      NotificationType
+  metadata  Json? // Stores dynamic references instead of hardcoded UI strings
+  readAt    DateTime? // Replaces `read Boolean` for analytics and activity tracking
+  createdAt DateTime         @default(now())
+
+  userId Int
+  user   User @relation("NotificationsReceived", fields: [userId], references: [id])
+
+  // Context metadata for frontend routing
+  actorId   Int?
+  actor     User?    @relation("NotificationActor", fields: [actorId], references: [id])
+  postId    Int?
+  post      Post?    @relation(fields: [postId], references: [id], onDelete: Cascade)
+  commentId Int?
+  comment   Comment? @relation(fields: [commentId], references: [id], onDelete: Cascade)
+
+  // Fast feed queries using our standard deterministic pagination signature
+  @@index([userId, createdAt, id])
+  @@index([userId, readAt])
+}
+
+// ============================================
+// PHASE 4: AUDIT LOGS
+// ============================================
+
+enum AuditActionType {
+  POST_CREATED
+  POST_UPDATED
+  STATUS_CHANGED
+  POST_ACKNOWLEDGED
+  POST_RESOLVED
+  POST_REOPENED
+  USE_CASE_GRADUATED
+  ASSIGNED
+  UNASSIGNED
+  DEPARTMENT_CHANGED
+  COMMENT_CREATED
+  COMMENT_DELETED
+  ATTACHMENT_UPLOADED
+  KB_SWEPT
+}
+
+enum AuditEntityType {
+  POST
+  COMMENT
+  ATTACHMENT
+  WORKFLOW
+}
+
+model AuditLog {
+  id String @id @default(cuid())
+
+  actorId Int
+  actor   User @relation("AuditLogsActor", fields: [actorId], references: [id])
+
+  postId Int?
+  post   Post? @relation("PostAuditLogs", fields: [postId], references: [id], onDelete: Cascade)
+
+  actionType AuditActionType
+  entityType AuditEntityType
+  entityId   Int
+
+  // STRICTLY BOUNDED JSON (Deltas only)
+  metadata Json?
+
+  createdAt DateTime @default(now())
+
+  @@index([postId, createdAt, id])
+  @@index([actorId, createdAt])
+  @@index([actionType, createdAt])
+}
+
+model SectionOwnership {
+  id       Int     @id @default(autoincrement())
+  section  Section @unique
+  ownerId  Int
+  owner    User    @relation(fields: [ownerId], references: [id])
+}
+
+// ============================================
+// PHASE 5: SLA METRICS & RBAC
+// ============================================
+
+enum SLAStatus {
+  HEALTHY
+  AT_RISK
+  BREACHED
+}
+
+enum CampaignStatus {
+  ACTIVE
+  CLOSED
+}
+
+// Handbook B8 · time-boxed themed prompts. Founder posts one campaign per
+// month; contributors tag Ideas against it; the founder picks the winner.
+model Campaign {
+  id          Int             @id @default(autoincrement())
+  title       String
+  prompt      String
+  themeTag    String?
+  startsAt    DateTime        @default(now())
+  endsAt      DateTime
+  status      CampaignStatus  @default(ACTIVE)
+  createdById Int
+  createdBy   User            @relation("CampaignCreator", fields: [createdById], references: [id])
+  winnerId    Int?
+  winner      Post?           @relation("CampaignWinner", fields: [winnerId], references: [id])
+  closedAt    DateTime?
+
+  posts       Post[]          @relation("CampaignPosts")
+
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  @@index([status, endsAt])
+}
+
+model WorkflowMetrics {
+  id String @id @default(cuid())
+
+  postId Int  @unique
+  post   Post @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  // Absolute timestamps
+  firstResponseAt        DateTime?
+  completedAt            DateTime?
+  currentStatusStartedAt DateTime? // Active duration tracking
+
+  // Accumulated durations (seconds)
+  totalTimeInOpen       Int @default(0)
+  totalTimeInDiscussing Int @default(0)
+
+  slaStatus SLAStatus @default(HEALTHY)
+
+  // Phase 6: AI Caching
+  aiSummaryCache       Json?
+  aiSummaryGeneratedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([slaStatus])
+}
+
+model Permission {
+  id          Int     @id @default(autoincrement())
+  key         String  @unique // e.g., 'workflow.assign', 'analytics.view'
+  description String?
+
+  rolePermissions RolePermission[]
+
+  createdAt DateTime @default(now())
+}
+
+model RolePermission {
+  role         Role
+  permissionId Int
+
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([role, permissionId])
+}
