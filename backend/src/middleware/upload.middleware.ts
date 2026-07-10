@@ -52,10 +52,29 @@ export const validateMagicBytes = async (req: Request, _res: Response, next: Nex
 
   try {
     const fileInfo = await fileTypeFromBuffer(req.file.buffer);
-    
-    // txt files often don't have magic bytes recognized by file-type, allow if specifically requested
+
+    // text/plain files have no magic bytes; validate the buffer is actually
+    // plain ASCII/UTF-8 text and reject anything with control chars that
+    // could indicate a smuggled binary or HTML/script payload.
     if (req.file.mimetype === 'text/plain') {
-       return next();
+      const buf = req.file.buffer;
+      // Sniff up to 8KB — plenty to catch shell scripts, HTML, PDFs claiming text.
+      const head = buf.slice(0, 8192);
+      // Reject any control byte other than \t \n \r
+      for (let i = 0; i < head.length; i++) {
+        const b = head[i];
+        if (b < 0x09 || (b > 0x0d && b < 0x20)) {
+          console.warn(`[SECURITY] ${req.id || 'unknown'} - text/plain upload contains binary bytes`);
+          throw new AppError('text/plain payload contains non-text bytes.', StatusCodes.BAD_REQUEST, 'FILE_SPOOF_DETECTED');
+        }
+      }
+      // Also reject if it looks like HTML/JS/PHP — cheap first-line sniff.
+      const asString = head.toString('utf8', 0, Math.min(head.length, 512)).trim().toLowerCase();
+      if (asString.startsWith('<!doctype') || asString.startsWith('<html') || asString.startsWith('<script') || asString.startsWith('<?php')) {
+        console.warn(`[SECURITY] ${req.id || 'unknown'} - text/plain upload looks like markup/code`);
+        throw new AppError('text/plain payload looks like markup or code.', StatusCodes.BAD_REQUEST, 'FILE_SPOOF_DETECTED');
+      }
+      return next();
     }
 
     if (!fileInfo || !ALLOWED_MIME_TYPES.includes(fileInfo.mime)) {

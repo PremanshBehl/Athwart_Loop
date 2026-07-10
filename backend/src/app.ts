@@ -22,26 +22,48 @@ import { config } from './config/env.config';
 
 const app = express();
 
+// CORS: never mix wildcard '*' with credentials — that's an authorization leak.
+// - Production: CORS_ORIGIN MUST be set to an explicit comma-separated allowlist.
+// - Development: fall back to a small hardcoded list of localhost dev origins.
+const devDefaultOrigins = [
+  'http://localhost:5173',
+  'http://127.0.0.1:5173',
+  'http://localhost:4173',
+];
 const allowedOrigins = config.CORS_ORIGIN
-  ? config.CORS_ORIGIN.split(',').map((o) => o.trim())
-  : null;
+  ? config.CORS_ORIGIN.split(',').map((o) => o.trim()).filter(Boolean)
+  : (config.NODE_ENV === 'production' ? [] : devDefaultOrigins);
+
+if (config.NODE_ENV === 'production' && allowedOrigins.length === 0) {
+  // Fail loud — a misconfigured prod deploy should not silently accept anyone.
+  throw new Error('CORS_ORIGIN must be set in production');
+}
 
 app.use(tracingMiddleware());
 app.use(cors({
-  origin: allowedOrigins ?? '*',
+  origin: (origin, cb) => {
+    // Allow same-origin / server-to-server requests (no Origin header).
+    if (!origin) return cb(null, true);
+    if (allowedOrigins.includes(origin)) return cb(null, true);
+    return cb(new Error(`CORS: origin ${origin} not allowed`));
+  },
   credentials: true,
 }));
 app.use(helmet());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Serve uploaded files securely
+// Serve uploaded files securely. Force download for anything but images so a
+// crafted .html / .svg upload can't execute inline in another user's session.
+const INLINEABLE_EXTS = new Set(['.jpg', '.jpeg', '.png', '.webp', '.gif']);
 app.use('/uploads', express.static(path.resolve(__dirname, '../../uploads'), {
-  setHeaders: (res) => {
-    // Prevent MIME-sniffing
+  setHeaders: (res, filePath) => {
     res.setHeader('X-Content-Type-Options', 'nosniff');
-    // We could force download by default for everything, or conditionally.
-    // Setting nosniff prevents browser from interpreting text/plain as HTML.
+    const ext = path.extname(filePath).toLowerCase();
+    if (!INLINEABLE_EXTS.has(ext)) {
+      // basename is safe here — filePath comes from the filesystem resolver, not the URL.
+      res.setHeader('Content-Disposition', `attachment; filename="${path.basename(filePath)}"`);
+    }
   }
 }));
 

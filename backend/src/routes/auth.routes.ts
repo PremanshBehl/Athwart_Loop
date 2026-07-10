@@ -11,14 +11,15 @@ import {
 } from '../controllers/auth.controller';
 import { authenticate } from '../middleware/auth.middleware';
 import { validate } from '../middleware/validate.middleware';
-import { registerSchema, loginSchema, updateUserRoleSchema } from '../validations/v1/auth.validation';
+import { authLimiter } from '../middleware/rateLimit.middleware';
+import { registerSchema, loginSchema, updateUserRoleSchema, updateProfileSchema } from '../validations/v1/auth.validation';
 
 const router = Router();
 
-router.post('/register', validate(registerSchema), register);
-router.post('/login', validate(loginSchema), login);
+router.post('/register', authLimiter, validate(registerSchema), register);
+router.post('/login', authLimiter, validate(loginSchema), login);
 router.get('/me', authenticate, getMe);
-router.patch('/me', authenticate, updateProfile);
+router.patch('/me', authenticate, validate(updateProfileSchema), updateProfile);
 router.get('/users', authenticate, listUsers);
 router.get('/users/manage', authenticate, listUsersForManagement);
 router.patch('/users/:id/role', authenticate, validate(updateUserRoleSchema), updateUserRole);

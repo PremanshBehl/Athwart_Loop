@@ -10,16 +10,20 @@ import { config } from '../config/env.config';
 
 /* ---------- REGISTER ---------- */
 export const register = async (req: Request, res: Response) => {
-  const { email, password, name, role, bio, avatarUrl } = req.body;
+  const { email, password, name, bio } = req.body;
 
   const existing = await prisma.user.findUnique({ where: { email } });
   if (existing) {
     throw new AppError('Email already registered', StatusCodes.CONFLICT, 'EMAIL_EXISTS');
   }
 
+  // Role is intentionally NOT read from the request body — that would let any
+  // anonymous signup escalate to FOUNDER. Every new account starts as the
+  // least-privileged section role; an Admin/Founder promotes explicitly via
+  // PATCH /users/:id/role.
   const passwordHash = await bcrypt.hash(password, 10);
   const user = await prisma.user.create({
-    data: { email, passwordHash, name, role, bio, avatarUrl },
+    data: { email, passwordHash, name, bio, role: 'FRONTEND' },
   });
 
   const payload: JwtPayload = {

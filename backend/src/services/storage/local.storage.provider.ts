@@ -57,11 +57,20 @@ export class LocalStorageProvider implements StorageProvider {
   }
 
   public async delete(key: string): Promise<void> {
-    // Prevent path traversal in delete operations
-    const normalizedKey = path.normalize(key).replace(new RegExp('^(\\\\.\\\\.(\\\\/|\\\\\\\\|$))+', 'g'), '');
-    const absolutePath = path.join(this.baseUploadDir, normalizedKey);
+    // Prevent path traversal: resolve to an absolute path and refuse anything
+    // that escapes the upload root. The previous regex-based scrubbing only
+    // matched Windows-style backslash traversal and let ../ through on POSIX.
+    const resolved = path.resolve(this.baseUploadDir, key);
+    const rootWithSep = this.baseUploadDir.endsWith(path.sep)
+      ? this.baseUploadDir
+      : this.baseUploadDir + path.sep;
+    if (resolved !== this.baseUploadDir && !resolved.startsWith(rootWithSep)) {
+      // Refuse silently — never confirm existence of a targeted path via error.
+      console.warn(`[SECURITY] Rejected path-traversal delete attempt: ${key}`);
+      return;
+    }
     try {
-      await fs.unlink(absolutePath);
+      await fs.unlink(resolved);
     } catch (error: any) {
       if (error.code !== 'ENOENT') {
         throw error;
