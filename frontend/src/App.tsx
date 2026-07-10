@@ -2,6 +2,7 @@ import React from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
 import ProtectedRoute from '@/routes/ProtectedRoute';
+import AdminRoute from '@/routes/AdminRoute';
 import AppLayout from '@/components/layout/AppLayout';
 import LoginPage from '@/pages/LoginPage';
 import RegisterPage from '@/pages/RegisterPage';
@@ -40,11 +41,13 @@ const App: React.FC = () => (
           <Route path="/profile" element={<ProfilePage />} />
           <Route path="/profile/:id" element={<ProfilePage />} />
           <Route path="/post/:id" element={<PostDetailPage />} />
-          <Route path="/admin/roles" element={<RoleManagementPage />} />
-          <Route path="/admin/loop-health"    element={<AdminLoopHealthPage />} />
-          <Route path="/admin/section-owners" element={<AdminSectionOwnersPage />} />
-          <Route path="/admin/kb-sweep"       element={<AdminKbSweepPage />} />
-          <Route path="/admin/campaigns"      element={<AdminCampaignsPage />} />
+          <Route element={<AdminRoute />}>
+            <Route path="/admin/roles" element={<RoleManagementPage />} />
+            <Route path="/admin/loop-health"    element={<AdminLoopHealthPage />} />
+            <Route path="/admin/section-owners" element={<AdminSectionOwnersPage />} />
+            <Route path="/admin/kb-sweep"       element={<AdminKbSweepPage />} />
+            <Route path="/admin/campaigns"      element={<AdminCampaignsPage />} />
+          </Route>
           <Route path="/campaigns"            element={<CampaignsPage />} />
           <Route path="/campaigns/:id"        element={<CampaignDetailPage />} />
         </Route>

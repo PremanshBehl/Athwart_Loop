@@ -31,6 +31,11 @@ interface PostState {
   lastFilters: PostFilters;
   stats: PostStats;
   totalPosts: number;
+  // Populated when the last fetchFeed/fetchPost failed. UI consumers should
+  // check this before showing "no results" so a network failure isn't
+  // indistinguishable from an empty feed.
+  feedError: string | null;
+  postError: string | null;
   fetchFeed: (filters?: PostFilters) => Promise<void>;
   fetchMoreFeed: () => Promise<void>;
   fetchPost: (id: number, background?: boolean) => Promise<void>;
@@ -59,26 +64,29 @@ export const usePostStore = create<PostState>((set, get) => ({
     needReview: 0,
     completed: 0,
   },
+  feedError: null,
+  postError: null,
 
   fetchFeed: async (filters = {}) => {
     // Clean empty strings and undefined/null values
     const cleanFilters = Object.fromEntries(
       Object.entries(filters).filter(([_, v]) => v !== '' && v !== null && v !== undefined)
     );
-    set({ loading: true, lastFilters: cleanFilters });
+    set({ loading: true, lastFilters: cleanFilters, feedError: null });
 
     try {
       const res = await api.get('/posts', { params: cleanFilters });
-      set({ 
-        feed: res.data, 
+      set({
+        feed: res.data,
         loading: false,
         hasMore: (res as any).meta?.hasMore || false,
         nextCursor: (res as any).meta?.nextCursor || null,
         totalPosts: (res as any).meta?.total ?? res.data.length
       });
       get().fetchStats();
-    } catch {
-      set({ loading: false });
+    } catch (err: any) {
+      const msg = err?.response?.data?.message || 'Failed to load posts. Check your connection.';
+      set({ loading: false, feedError: msg });
     }
   },
 
@@ -104,15 +112,20 @@ export const usePostStore = create<PostState>((set, get) => ({
   },
 
   fetchPost: async (id, background = false) => {
-    if (!background) set({ loading: true });
+    if (!background) set({ loading: true, postError: null });
     try {
       const [{ data: post }, { data: comments }] = await Promise.all([
         api.get(`/posts/${id}`),
         api.get(`/posts/${id}/comments`)
       ]);
-      set({ current: { ...post, comments }, loading: false });
-    } catch {
-      if (!background) set({ loading: false });
+      set({ current: { ...post, comments }, loading: false, postError: null });
+    } catch (err: any) {
+      const status = err?.response?.status;
+      const msg =
+        status === 404
+          ? 'Post not found.'
+          : err?.response?.data?.message || 'Failed to load post. Check your connection.';
+      if (!background) set({ loading: false, current: null, postError: msg });
     }
   },
 

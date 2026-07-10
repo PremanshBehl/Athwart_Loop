@@ -12,7 +12,6 @@ interface AuthState {
     email: string;
     password: string;
     name: string;
-    role: string;
     bio?: string;
   }) => Promise<void>;
   logout: () => void;

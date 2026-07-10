@@ -2,19 +2,11 @@ import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '@/stores/auth.store';
 
-const ROLES = [
-  { value: 'FOUNDER',  label: '👑 Founder' },
-  { value: 'FRONTEND', label: '🎨 Frontend' },
-  { value: 'BACKEND',  label: '⚙️ Backend' },
-  { value: 'DEVOPS',   label: '🛠️ DevOps' },
-  { value: 'AI_ML',    label: '🤖 AI/ML' },
-];
-
 const RegisterPage: React.FC = () => {
   const { register, loading } = useAuthStore();
   const navigate = useNavigate();
   const [form, setForm] = useState({
-    name: '', email: '', password: '', role: 'FRONTEND', bio: '',
+    name: '', email: '', password: '', bio: '',
   });
   const [error, setError] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -83,8 +75,8 @@ const RegisterPage: React.FC = () => {
                   id="reg-password"
                   type={showPassword ? "text" : "password"}
                   className="input pr-10"
-                  placeholder="At least 6 characters"
-                  minLength={6}
+                  placeholder="At least 8 characters"
+                  minLength={8}
                   required
                   value={form.password}
                   onChange={(e) => setForm({ ...form, password: e.target.value })}
@@ -105,25 +97,6 @@ const RegisterPage: React.FC = () => {
                     </svg>
                   )}
                 </button>
-              </div>
-            </div>
-            <div>
-              <label className="label">Your Role</label>
-              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-                {ROLES.map(({ value, label }) => (
-                  <button
-                    key={value}
-                    type="button"
-                    onClick={() => setForm({ ...form, role: value })}
-                    className={`px-3 py-2 rounded-lg text-sm border transition-all
-                      ${form.role === value
-                        ? 'border-brand-primary bg-brand-light text-brand-primary font-bold'
-                        : 'border-surface-border text-gray-600 hover:border-brand-primary/50'
-                      }`}
-                  >
-                    {label}
-                  </button>
-                ))}
               </div>
             </div>
             <div>

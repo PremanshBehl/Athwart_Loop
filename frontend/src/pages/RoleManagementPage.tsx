@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { Navigate } from 'react-router-dom';
 import api from '@/api/axios';
 import { useAuthStore } from '@/stores/auth.store';
 import { User, UserRole } from '@/types';
@@ -42,7 +43,7 @@ const RoleManagementPage: React.FC = () => {
     if (isAuthorized) fetchUsers();
   }, [isAuthorized]);
 
-  if (!isAuthorized) return null;
+  if (!isAuthorized) return <Navigate to="/feed" replace />;
 
   const handleRoleChange = async (userId: number, role: UserRole) => {
     setUpdatingId(userId);
