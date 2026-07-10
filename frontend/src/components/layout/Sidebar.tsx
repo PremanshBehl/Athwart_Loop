@@ -1,66 +1,84 @@
-import React, { useState } from 'react';
-import athwartLogo from '@/assets/athwart-logo.jpg';
+import React from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '@/stores/auth.store';
 import { useNotificationStore } from '@/stores/notification.store';
-import Avatar from '@/components/shared/Avatar';
+import { BrandMark } from '@/components/shared/BrandMark';
+import type { LucideIcon } from 'lucide-react';
 import {
   LayoutList,
-  User as UserIcon,
-  Bell,
   Megaphone,
-  Shield,
+  Bell,
+  User as UserIcon,
   Activity,
-  Users,
-  BookOpen,
-  ChevronDown,
+  Shield,
   LogOut,
   X,
 } from 'lucide-react';
 
-// Handbook + redesign IA: one canonical Board; sections are a secondary
-// browse axis, not their own destinations.
-const PRIMARY = [
-  { to: '/feed',          icon: LayoutList, label: 'Board' },
-  { to: '/campaigns',     icon: Megaphone,  label: 'Campaigns' },
-  { to: '/profile',       icon: UserIcon,   label: 'My contributions' },
-  { to: '/notifications', icon: Bell,       label: 'Notifications' },
-];
+const ROLE_COLOR: Record<string, string> = {
+  ADMIN:    '#8018de',
+  FOUNDER:  '#6a0fc0',
+  FRONTEND: '#0a6dd8',
+  BACKEND:  '#1e8f4e',
+  DEVOPS:   '#f15d24',
+  AI_ML:    '#c79000',
+};
+const ROLE_LABEL: Record<string, string> = {
+  ADMIN: 'Admin', FOUNDER: 'Founder', FRONTEND: 'Frontend', BACKEND: 'Backend', DEVOPS: 'DevOps', AI_ML: 'AI / ML',
+};
 
-// The nine business sections plus General. Clicking a section jumps to the
-// board pre-filtered by that section.
-const SECTIONS: Array<{ id: string; label: string }> = [
-  { id: 'BILLS',      label: 'Bills'      },
-  { id: 'INVOICING',  label: 'Invoicing'  },
-  { id: 'PATIENTS',   label: 'Patients'   },
-  { id: 'CASES',      label: 'Cases'      },
-  { id: 'PARTNERS',   label: 'Partners'   },
-  { id: 'HOSPITALS',  label: 'Hospitals'  },
-  { id: 'DOCTORS',    label: 'Doctors'    },
-  { id: 'WHATSAPP',   label: 'WhatsApp'   },
-  { id: 'PLATFORM',   label: 'Platform'   },
-  { id: 'GENERAL',    label: 'General'    },
-];
+const initialsOf = (name?: string) =>
+  (name ?? '?').split(' ').map((w) => w[0]).slice(0, 2).join('').toUpperCase();
+
+const PRIMARY = [
+  { to: '/feed',          icon: LayoutList, label: 'The Loop', matchExtra: '/' },
+  { to: '/campaigns',     icon: Megaphone,  label: 'Campaigns' },
+  { to: '/notifications', icon: Bell,       label: 'Notifications' },
+  { to: '/profile',       icon: UserIcon,   label: 'My Profile' },
+] as const;
 
 const ADMIN_NAV = [
-  { to: '/admin/loop-health',    icon: Activity,  label: 'Loop health'      },
-  { to: '/admin/section-owners', icon: Users,     label: 'Section owners'   },
-  { to: '/admin/kb-sweep',       icon: BookOpen,  label: 'KB sweep'         },
-  { to: '/admin/campaigns',      icon: Megaphone, label: 'Manage campaigns' },
-  { to: '/admin/roles',          icon: Shield,    label: 'Role Management'  },
-];
+  { to: '/admin/loop-health', icon: Activity, label: 'Loop Health' },
+  { to: '/admin/roles',       icon: Shield,   label: 'Role Management' },
+] as const;
 
 interface SidebarProps {
   isOpen: boolean;
   onClose: () => void;
 }
 
+const NavItem: React.FC<{
+  to: string;
+  icon: LucideIcon;
+  label: string;
+  onClose: () => void;
+  end?: boolean;
+  right?: React.ReactNode;
+}> = ({ to, icon: Icon, label, onClose, end, right }) => (
+  <NavLink
+    to={to}
+    onClick={onClose}
+    end={end}
+    className={({ isActive }) =>
+      `flex items-center gap-3 px-3 py-2.5 rounded-[10px] text-[14.5px] transition-colors ${
+        isActive
+          ? 'font-semibold'
+          : 'font-medium text-ink-muted hover:text-ink hover:bg-brand-softer/60'
+      }`
+    }
+    style={({ isActive }: any) => (isActive ? { background: '#f3ecfd', color: '#8018de' } : undefined)}
+  >
+    <span className="w-[19px] h-[19px] shrink-0"><Icon size={19} /></span>
+    <span className="flex-1 text-left">{label}</span>
+    {right}
+  </NavLink>
+);
+
 const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
   const { user, logout } = useAuthStore();
   const { unreadCount } = useNotificationStore();
   const navigate = useNavigate();
   const isAdmin = user?.role === 'FOUNDER' || user?.role === 'ADMIN';
-  const [sectionsOpen, setSectionsOpen] = useState(true);
 
   const handleLogout = () => {
     logout();
@@ -68,115 +86,89 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
   };
 
   return (
-    <aside className={`
-      fixed inset-y-0 left-0 z-50 transform ${isOpen ? 'translate-x-0' : '-translate-x-full'}
-      md:relative md:translate-x-0 transition-transform duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]
-      w-64 flex-shrink-0 h-screen bg-white border-r border-surface-border
-      flex flex-col overflow-y-auto shadow-sm
-    `}>
-      {/* Logo */}
-      <div className="px-6 h-[84px] border-b border-gray-100 flex items-center justify-between shrink-0">
-        <div className="flex items-center gap-3">
-          <img src={athwartLogo} alt="Athwart logo" className="w-12 h-12 object-contain" />
-          <div className="flex items-baseline gap-1.5">
-            <p className="font-bold text-gray-900 text-[20px] tracking-tight leading-none">athwart</p>
-            <p className="font-heading italic text-brand-primary text-[15px] leading-none">Loop</p>
-          </div>
-        </div>
-        <button className="md:hidden text-gray-400 hover:text-gray-900 p-1 rounded transition-colors" onClick={onClose}>
-          <X size={20} />
+    <aside
+      className={`
+        fixed inset-y-0 left-0 z-50 w-[244px] bg-white border-r border-surface-border
+        flex flex-col shrink-0 sticky top-0 h-screen
+        transform ${isOpen ? 'translate-x-0' : '-translate-x-full'}
+        md:relative md:translate-x-0 transition-transform duration-300
+      `}
+    >
+      {/* Header */}
+      <div className="px-5 py-5 flex items-center gap-3 border-b border-surface-borderSoft">
+        <BrandMark size={34} color="#8018de" />
+        <span className="font-heading text-[19px] font-bold text-ink leading-none">
+          athwart<span className="text-ink-faint font-normal"> loop</span>
+        </span>
+        <button
+          onClick={onClose}
+          className="md:hidden ml-auto text-ink-whisper hover:text-ink p-1"
+          aria-label="Close menu"
+        >
+          <X size={18} />
         </button>
       </div>
 
-      {/* Primary nav */}
-      <nav className="flex-1 px-4 py-5 space-y-1">
-        {PRIMARY.map(({ to, icon: Icon, label }) => (
-          <NavLink
+      {/* Nav */}
+      <nav className="flex-1 px-3 py-3 flex flex-col gap-0.5 overflow-y-auto">
+        {PRIMARY.map(({ to, icon, label }) => (
+          <NavItem
             key={to}
             to={to}
-            onClick={onClose}
+            icon={icon}
+            label={label}
+            onClose={onClose}
             end={to === '/feed'}
-            className={({ isActive }) => `nav-link group ${isActive ? 'active' : ''}`}
-          >
-            <Icon size={18} className="opacity-80 transition-transform duration-300 group-hover:scale-110 group-hover:text-brand-primary" />
-            <span className="flex-1 tracking-wide">{label}</span>
-            {to === '/notifications' && unreadCount > 0 && (
-              <span className="ml-auto bg-brand-primary text-white text-[10px] rounded-full px-2 py-0.5 flex items-center justify-center font-bold">
-                {unreadCount > 9 ? '9+' : unreadCount}
-              </span>
-            )}
-          </NavLink>
+            right={
+              to === '/notifications' && unreadCount > 0 ? (
+                <span
+                  className="min-w-[18px] h-[18px] px-1.5 rounded-full grid place-items-center text-white text-[11px] font-bold"
+                  style={{ background: '#f15d24' }}
+                >
+                  {unreadCount > 9 ? '9+' : unreadCount}
+                </span>
+              ) : null
+            }
+          />
         ))}
 
-        {/* Browse by section */}
-        <div className="pt-5">
-          <button
-            onClick={() => setSectionsOpen((v) => !v)}
-            className="flex items-center gap-1 px-4 pb-2 text-[10px] font-bold tracking-[0.14em] uppercase text-gray-400 hover:text-gray-600 transition-colors w-full"
-          >
-            <span>Browse by section</span>
-            <ChevronDown size={12} className={`ml-auto transition-transform ${sectionsOpen ? '' : '-rotate-90'}`} />
-          </button>
-          {sectionsOpen && (
-            <ul className="space-y-0.5">
-              {SECTIONS.map((s) => (
-                <li key={s.id}>
-                  <NavLink
-                    to={`/feed?section=${s.id}`}
-                    onClick={onClose}
-                    className="flex items-center gap-3 px-4 py-1.5 rounded-lg text-[13px] text-gray-600 hover:bg-brand-light hover:text-brand-primary transition-colors"
-                  >
-                    <span className="inline-block w-1 h-1 rounded-full bg-gray-300"></span>
-                    {s.label}
-                  </NavLink>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-
-        {/* Admin group */}
         {isAdmin && (
-          <div className="pt-5">
-            <p className="px-4 pb-2 text-[10px] font-bold tracking-[0.14em] uppercase text-gray-400">
+          <>
+            <div className="text-[11px] uppercase tracking-[0.07em] text-ink-whisper font-semibold pt-4 pb-1.5 px-3">
               Admin
-            </p>
-            {ADMIN_NAV.map(({ to, icon: Icon, label }) => (
-              <NavLink
-                key={to}
-                to={to}
-                onClick={onClose}
-                className={({ isActive }) => `nav-link group ${isActive ? 'active' : ''}`}
-              >
-                <Icon size={18} className="opacity-80 transition-transform duration-300 group-hover:scale-110 group-hover:text-brand-primary" />
-                <span className="flex-1 tracking-wide">{label}</span>
-              </NavLink>
+            </div>
+            {ADMIN_NAV.map(({ to, icon, label }) => (
+              <NavItem key={to} to={to} icon={icon} label={label} onClose={onClose} />
             ))}
-          </div>
+          </>
         )}
       </nav>
 
       {/* User footer */}
-      <div className="px-5 py-5 border-t border-surface-border/50 bg-gray-50/50">
-        {user && (
-          <div className="flex items-center gap-3 mb-4">
-            <div className="ring-2 ring-brand-primary/20 rounded-full p-0.5">
-              <Avatar user={user} size="sm" />
+      {user && (
+        <div className="p-3 border-t border-surface-borderSoft">
+          <div className="flex items-center gap-2.5 p-2">
+            <span
+              className="w-9 h-9 rounded-full grid place-items-center text-white text-[14px] font-bold shrink-0"
+              style={{ background: ROLE_COLOR[user.role] ?? '#8018de' }}
+            >
+              {initialsOf(user.name)}
+            </span>
+            <div className="flex-1 min-w-0">
+              <div className="text-[14px] font-semibold text-ink truncate">{user.name}</div>
+              <div className="text-[12px] text-ink-faint truncate">{ROLE_LABEL[user.role] ?? user.role}</div>
             </div>
-            <div className="min-w-0">
-              <p className="text-sm font-semibold text-gray-800 truncate">{user.name}</p>
-              <p className="text-[10px] text-gray-500 truncate font-medium uppercase tracking-wider">{user.role?.replace('_', '/')}</p>
-            </div>
+            <button
+              onClick={handleLogout}
+              title="Sign out"
+              className="text-ink-whisper hover:text-[#f15d24] transition-colors p-1.5"
+              aria-label="Sign out"
+            >
+              <LogOut size={18} />
+            </button>
           </div>
-        )}
-        <button
-          onClick={handleLogout}
-          className="w-full flex items-center justify-center gap-2 text-sm text-gray-500 hover:text-brand-primary hover:bg-brand-light transition-all px-3 py-2 rounded-xl font-medium"
-        >
-          <LogOut size={16} />
-          Sign out
-        </button>
-      </div>
+        </div>
+      )}
     </aside>
   );
 };

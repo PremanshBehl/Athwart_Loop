@@ -6,13 +6,28 @@ export default {
       colors: {
         brand: {
           primary: '#8018de',
+          primaryDark: '#6a0fc0',
           light: '#ede3ff',
+          softer: '#f3ecfd',   // hover / selected nav
+          faintest: '#faf7ff', // canonical answer / soft banners
+        },
+        // Design-system semantic colors (from the .dc.html brand manual).
+        page: '#f6f4fa',        // app background
+        ink: {
+          DEFAULT: '#241b2e',   // primary text
+          soft:    '#3d3548',   // body text
+          muted:   '#5a5266',   // secondary
+          faint:   '#737373',   // tertiary
+          ghost:   '#8a8194',   // meta
+          whisper: '#a89fb5',   // placeholder / labels
         },
         surface: {
           DEFAULT: '#ffffff',
-          hover: '#f9fafb', // gray-50
-          border: '#e5e7eb', // gray-200
-          muted: '#737373', // brand gray
+          hover:  '#f8f6fc',
+          border: '#eae5f2',
+          borderSoft: '#f0ecf7',
+          borderInput: '#e8e3f0',
+          muted: '#737373',
         },
         accent: {
           cyan: '#77f0ec',

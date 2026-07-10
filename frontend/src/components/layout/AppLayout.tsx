@@ -21,20 +21,20 @@ const AppLayout: React.FC = () => {
   }, [fetchMe, fetchNotifications]);
 
   return (
-    <div className="flex h-screen overflow-hidden bg-white relative">
+    <div className="flex h-screen overflow-hidden relative" style={{ background: '#f6f4fa' }}>
       {/* Mobile overlay */}
       {isSidebarOpen && (
-        <div 
-          className="fixed inset-0 z-40 bg-black/50 md:hidden" 
+        <div
+          className="fixed inset-0 z-40 bg-black/50 md:hidden"
           onClick={() => setIsSidebarOpen(false)}
         />
       )}
-      
+
       <Sidebar isOpen={isSidebarOpen} onClose={() => setIsSidebarOpen(false)} />
-      
+
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         <Topbar onMenuClick={() => setIsSidebarOpen(true)} />
-        <main className="flex-1 overflow-y-auto p-4 md:p-8 bg-white">
+        <main className="flex-1 overflow-y-auto p-7" style={{ background: '#f6f4fa' }}>
           <AnimatePresence mode="wait">
             <motion.div
               key={location.pathname}

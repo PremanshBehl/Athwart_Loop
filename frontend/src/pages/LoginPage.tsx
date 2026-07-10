@@ -1,106 +1,152 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '@/stores/auth.store';
+import AuthBrandPanel from '@/components/auth/AuthBrandPanel';
+
+// Six demo accounts seeded by backend/audit-seed.ts. Order matches the dc.html
+// grid (2×3) so the mock and the app share a mental model.
+const DEMO_ACCOUNTS: {
+  email: string;
+  name: string;
+  role: 'FOUNDER' | 'ADMIN' | 'BACKEND' | 'FRONTEND' | 'DEVOPS' | 'AI_ML';
+}[] = [
+  { email: 'audit-founder@test.local',  name: 'Founder',  role: 'FOUNDER'  },
+  { email: 'audit-admin@test.local',    name: 'Admin',    role: 'ADMIN'    },
+  { email: 'audit-frontend@test.local', name: 'Frontend', role: 'FRONTEND' },
+  { email: 'audit-backend@test.local',  name: 'Backend',  role: 'BACKEND'  },
+  { email: 'audit-devops@test.local',   name: 'DevOps',   role: 'DEVOPS'   },
+  { email: 'audit-aiml@test.local',     name: 'AI/ML',    role: 'AI_ML'    },
+];
+
+const ROLE_COLOR: Record<string, string> = {
+  ADMIN:    '#8018de',
+  FOUNDER:  '#6a0fc0',
+  FRONTEND: '#0a6dd8',
+  BACKEND:  '#1e8f4e',
+  DEVOPS:   '#f15d24',
+  AI_ML:    '#c79000',
+};
+const ROLE_LABEL: Record<string, string> = {
+  ADMIN: 'Admin', FOUNDER: 'Founder', FRONTEND: 'Frontend', BACKEND: 'Backend', DEVOPS: 'DevOps', AI_ML: 'AI / ML',
+};
+
+const DEMO_PASSWORD = 'auditpass1234';
+
+const initialsOf = (name: string) =>
+  name.split(' ').map((w) => w[0]).slice(0, 2).join('').toUpperCase();
 
 const LoginPage: React.FC = () => {
   const { login, loading } = useAuthStore();
   const navigate = useNavigate();
   const [form, setForm] = useState({ email: '', password: '' });
   const [error, setError] = useState('');
-  const [showPassword, setShowPassword] = useState(false);
+  const [fieldErrors, setFieldErrors] = useState<{ email?: string; password?: string }>({});
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const attempt = async (email: string, password: string) => {
     setError('');
+    const fe: typeof fieldErrors = {};
+    if (!/^\S+@\S+\.\S+$/.test(email)) fe.email = 'Enter a valid email address';
+    if (password.length < 1) fe.password = 'Password is required';
+    if (Object.keys(fe).length) { setFieldErrors(fe); return; }
+    setFieldErrors({});
     try {
-      await login(form.email, form.password);
-      navigate('/dashboard');
+      await login(email, password);
+      navigate('/feed');
     } catch (err: any) {
       setError(err.response?.data?.message ?? 'Login failed');
     }
   };
 
-  return (
-    <div className="min-h-screen bg-gradient-to-br from-brand-light/50 via-white to-brand-light
-                    flex items-center justify-center p-4">
-      <div className="w-full max-w-md">
-        {/* Logo */}
-        <div className="text-center mb-8">
-          <div className="w-14 h-14 bg-brand-primary rounded-2xl flex items-center justify-center
-                          text-white font-bold text-2xl mx-auto mb-4 shadow-lg">
-            A
-          </div>
-          <h1 className="text-2xl font-bold text-gray-900">Welcome back</h1>
-          <p className="text-gray-500 mt-1">Sign in to Athwart Loop</p>
-        </div>
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    attempt(form.email, form.password);
+  };
 
-        <div className="card p-8">
+  return (
+    <div className="min-h-screen w-full grid" style={{ background: '#f6f4fa', gridTemplateColumns: 'minmax(0, 1.05fr) minmax(0, 0.95fr)' }}>
+      <AuthBrandPanel />
+
+      <div className="flex items-center justify-center p-10">
+        <div className="w-full max-w-[380px]">
+          <h2 className="font-heading text-[30px] text-ink mb-1.5">Welcome back</h2>
+          <p className="text-ink-faint mb-7 text-[15px]">Sign in to your Athwart Loop workspace.</p>
+
           {error && (
-            <div className="bg-red-50 border border-red-200 text-red-600 text-sm rounded-lg
-                            px-4 py-3 mb-5">
+            <div className="mb-4 rounded-[10px] px-3.5 py-2.5 text-sm" style={{ background: '#fff0eb', border: '1px solid #f9c3ad', color: '#b23c12' }}>
               {error}
             </div>
           )}
 
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div>
-              <label className="label">Email address</label>
-              <input
-                id="login-email"
-                type="email"
-                className="input"
-                placeholder="you@company.com"
-                required
-                value={form.email}
-                onChange={(e) => setForm({ ...form, email: e.target.value })}
-              />
-            </div>
-            <div>
-              <label className="label">Password</label>
-              <div className="relative">
-                <input
-                  id="login-password"
-                  type={showPassword ? "text" : "password"}
-                  className="input pr-10"
-                  placeholder="••••••••"
-                  required
-                  value={form.password}
-                  onChange={(e) => setForm({ ...form, password: e.target.value })}
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute inset-y-0 right-3 flex items-center text-gray-400 hover:text-gray-600"
-                >
-                  {showPassword ? (
-                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
-                    </svg>
-                  ) : (
-                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.543 7-1.275 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                    </svg>
-                  )}
-                </button>
-              </div>
-            </div>
+          <form onSubmit={handleSubmit} noValidate>
+            <label className="block text-[13px] font-semibold text-ink mb-1.5">Email</label>
+            <input
+              type="email"
+              value={form.email}
+              onChange={(e) => setForm({ ...form, email: e.target.value })}
+              placeholder="you@athwart.ai"
+              className="w-full px-3.5 py-3 rounded-[10px] text-[15px] focus:outline-none"
+              style={{ border: '1.5px solid #e2e2e2' }}
+            />
+            <div className="h-[18px] text-[12px] mb-2" style={{ color: '#f15d24' }}>{fieldErrors.email || ''}</div>
+
+            <label className="block text-[13px] font-semibold text-ink mb-1.5">Password</label>
+            <input
+              type="password"
+              value={form.password}
+              onChange={(e) => setForm({ ...form, password: e.target.value })}
+              placeholder="••••••••"
+              className="w-full px-3.5 py-3 rounded-[10px] text-[15px] focus:outline-none"
+              style={{ border: '1.5px solid #e2e2e2' }}
+            />
+            <div className="h-[18px] text-[12px] mb-2" style={{ color: '#f15d24' }}>{fieldErrors.password || ''}</div>
+
             <button
-              id="login-submit"
               type="submit"
               disabled={loading}
-              className="btn-primary w-full justify-center py-2.5"
+              className="w-full py-3.5 rounded-[10px] font-semibold text-[15px] text-white transition-colors mt-1"
+              style={{ background: loading ? '#a875df' : '#8018de' }}
             >
               {loading ? 'Signing in…' : 'Sign in'}
             </button>
           </form>
 
-          <p className="text-center text-sm text-gray-500 mt-6">
-            New to Athwart Loop?{' '}
-            <Link to="/register" className="text-brand-primary font-medium hover:underline">
-              Create an account
+          <div className="text-center mt-4.5 mt-4 text-sm text-ink-faint">
+            New to Athwart?{' '}
+            <Link to="/register" className="font-semibold" style={{ color: '#8018de' }}>
+              Create one
             </Link>
-          </p>
+          </div>
+
+          <div className="mt-8 pt-5 border-t border-gray-200">
+            <div className="text-[12px] uppercase tracking-[0.06em] text-ink-whisper font-semibold mb-3">
+              Quick demo sign-in
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              {DEMO_ACCOUNTS.map((acct) => (
+                <button
+                  key={acct.email}
+                  type="button"
+                  onClick={() => {
+                    setForm({ email: acct.email, password: DEMO_PASSWORD });
+                    attempt(acct.email, DEMO_PASSWORD);
+                  }}
+                  className="flex items-center gap-2.5 px-2.5 py-2.5 rounded-[10px] bg-white text-left transition-colors hover:bg-brand-faintest"
+                  style={{ border: '1.5px solid #e2e2e2' }}
+                >
+                  <span
+                    className="w-7 h-7 rounded-full grid place-items-center text-white text-[12px] font-bold shrink-0"
+                    style={{ background: ROLE_COLOR[acct.role] }}
+                  >
+                    {initialsOf(acct.name)}
+                  </span>
+                  <span className="overflow-hidden">
+                    <span className="block text-[13px] font-semibold text-ink leading-none">{acct.name}</span>
+                    <span className="block text-[11px] text-ink-faint mt-1">{ROLE_LABEL[acct.role]}</span>
+                  </span>
+                </button>
+              ))}
+            </div>
+          </div>
         </div>
       </div>
     </div>
