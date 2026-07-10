@@ -7,6 +7,7 @@ import { usePostStore } from '@/stores/post.store';
 import { useAuthStore } from '@/stores/auth.store';
 import PostCard from '@/components/posts/PostCard';
 import CreatePostModal from '@/components/posts/CreatePostModal';
+import DashboardHeader from '@/components/dashboard/DashboardHeader';
 import Loader from '@/components/shared/Loader';
 import EmptyState from '@/components/shared/EmptyState';
 import { Post, User } from '@/types';
@@ -134,7 +135,17 @@ const FeedPage: React.FC = () => {
   };
 
   return (
-    <div className="max-w-3xl mx-auto space-y-6 pb-20">
+    <div className="max-w-4xl mx-auto space-y-6 pb-20">
+      {/* Dashboard section — sits above the board so the landing page
+          answers "who am I, what needs me, what's in my inbox" before
+          diving into the full board below. */}
+      <DashboardHeader />
+
+      {/* Board section: search + filters + list/kanban of posts. */}
+      <div className="pt-2">
+        <h3 className="font-semibold text-gray-900 font-heading text-lg mb-3">The board</h3>
+      </div>
+
       {/* Header & Filter Controls */}
       <div className="card p-5 space-y-4">
         
