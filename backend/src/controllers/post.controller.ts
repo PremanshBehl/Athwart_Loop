@@ -84,6 +84,20 @@ export const createPost = async (req: Request, res: Response) => {
     throw error;
   }
 
+  // Audit: every post creation is a status transition (nothing → OPEN). This
+  // was previously missing so the audit trail started at first ack, not at
+  // create.
+  await prisma.auditLog.create({
+    data: {
+      actorId: authorId,
+      postId: post.id,
+      actionType: 'POST_CREATED',
+      entityType: 'POST',
+      entityId: post.id,
+      metadata: { type, section, ownerId: ownerId ?? null, isUseCase: !!isUseCase },
+    },
+  }).catch((e) => console.warn('POST_CREATED audit failed:', e));
+
   // Fire-and-forget side effects — never let these crash the main response
   Promise.all([
     mentionService.processMentions({ text: description, authorId, postId: post.id }).catch(e =>
@@ -341,18 +355,40 @@ export const updatePost = async (req: Request, res: Response) => {
   if (assigneeId !== undefined) updateData.assigneeId = assigneeId;
   if (departmentId !== undefined) updateData.departmentId = departmentId;
 
-  const post = await prisma.post.update({
-    where: { id },
-    data: updateData,
-    include: {
-      author: { select: { id: true, name: true, role: true, avatarUrl: true } },
-      assignee: { select: { id: true, name: true, role: true, avatarUrl: true } },
-      attachments: true,
-      department: { select: { id: true, name: true, slug: true } },
-      reactions: true,
-      _count: { select: { comments: { where: { parentId: null } }, reactions: true } },
-    },
-  });
+  const departmentChanged =
+    departmentId !== undefined && departmentId !== existing.departmentId;
+
+  const ops: any[] = [
+    prisma.post.update({
+      where: { id },
+      data: updateData,
+      include: {
+        author: { select: { id: true, name: true, role: true, avatarUrl: true } },
+        assignee: { select: { id: true, name: true, role: true, avatarUrl: true } },
+        attachments: true,
+        department: { select: { id: true, name: true, slug: true } },
+        reactions: true,
+        _count: { select: { comments: { where: { parentId: null } }, reactions: true } },
+      },
+    }),
+  ];
+
+  if (departmentChanged) {
+    ops.push(
+      prisma.auditLog.create({
+        data: {
+          actorId: userId,
+          postId: id,
+          actionType: 'DEPARTMENT_CHANGED',
+          entityType: 'POST',
+          entityId: id,
+          metadata: { from: existing.departmentId, to: departmentId },
+        },
+      }),
+    );
+  }
+
+  const [post] = await prisma.$transaction(ops);
 
   if (description !== undefined) {
     mentionService.processMentions({ text: description, authorId: userId, postId: id }).catch((e) =>

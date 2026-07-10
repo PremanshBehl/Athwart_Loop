@@ -49,12 +49,29 @@ export const setSectionOwner = async (req: Request, res: Response) => {
   const owner = await prisma.user.findUnique({ where: { id: ownerId }, select: { id: true, name: true } });
   if (!owner) throw new AppError('User not found', StatusCodes.NOT_FOUND, 'USER_NOT_FOUND');
 
-  const row = await prisma.sectionOwnership.upsert({
-    where:  { section },
-    create: { section, ownerId },
-    update: { ownerId },
-    include: { owner: { select: { id: true, name: true, role: true, avatarUrl: true } } },
+  // Audit trail: section ownership is a privileged operation — record actor and delta.
+  const prior = await prisma.sectionOwnership.findUnique({
+    where: { section },
+    select: { ownerId: true },
   });
+
+  const [row] = await prisma.$transaction([
+    prisma.sectionOwnership.upsert({
+      where:  { section },
+      create: { section, ownerId },
+      update: { ownerId },
+      include: { owner: { select: { id: true, name: true, role: true, avatarUrl: true } } },
+    }),
+    prisma.auditLog.create({
+      data: {
+        actorId: req.user!.id,
+        actionType: 'ASSIGNED',
+        entityType: 'WORKFLOW',
+        entityId: ownerId,
+        metadata: { kind: 'SECTION_OWNER', section, fromOwnerId: prior?.ownerId ?? null, toOwnerId: ownerId },
+      },
+    }),
+  ]);
 
   return successResponse(res, `Section ${section} owner updated`, {
     section: row.section,

@@ -3,7 +3,43 @@ import { AppError } from '../utils/AppError';
 import { StatusCodes } from 'http-status-codes';
 import { eventBus, INTERNAL_EVENTS } from './events/internal.emitter';
 import prisma from '../config/db';
-import { auditService } from './audit.service';
+
+type ResolutionPayload = {
+  resolution?: Resolution;
+  resolutionReason?: string;
+  buildIssueUrl?: string | null;
+};
+
+// Server-side enforcement of the resolution shape rules from the spec:
+//   - resolution itself must be present when transitioning to RESOLVED
+//   - PARKED / DECLINED → resolutionReason required
+//   - When the post is a Use Case, resolution MUST be RULE_DECIDED
+//   - Problem / Idea resolved as FIXED or APPROVED → buildIssueUrl required
+//     (the "tracked_at / handoff URL" for the build ticket that continues the work)
+function validateResolutionPayload(
+  post: { type: Type; isUseCase: boolean },
+  payload: ResolutionPayload | undefined,
+) {
+  if (!payload?.resolution) {
+    throw new AppError('Resolution is required when resolving.', StatusCodes.BAD_REQUEST, 'RESOLUTION_REQUIRED');
+  }
+  const { resolution, resolutionReason, buildIssueUrl } = payload;
+  if ((resolution === Resolution.PARKED || resolution === Resolution.DECLINED) && !resolutionReason?.trim()) {
+    throw new AppError('Resolution reason is required for PARKED or DECLINED.', StatusCodes.BAD_REQUEST, 'REASON_REQUIRED');
+  }
+  if (post.isUseCase && resolution !== Resolution.RULE_DECIDED) {
+    throw new AppError('Use Cases must resolve with RULE_DECIDED.', StatusCodes.BAD_REQUEST, 'RULE_DECIDED_REQUIRED');
+  }
+  const problemOrIdea = post.type === Type.PROBLEM || post.type === Type.IDEA;
+  const fixedOrApproved = resolution === Resolution.FIXED || resolution === Resolution.APPROVED;
+  if (problemOrIdea && fixedOrApproved && !buildIssueUrl?.trim()) {
+    throw new AppError(
+      'A build/handoff URL (buildIssueUrl) is required when resolving a Problem or Idea as FIXED or APPROVED.',
+      StatusCodes.BAD_REQUEST,
+      'BUILD_URL_REQUIRED',
+    );
+  }
+}
 
 export class WorkflowService {
   /**
@@ -62,22 +98,17 @@ export class WorkflowService {
       if (!canResolve) {
         throw new AppError('Only the owner (or author for questions) can resolve this post.', StatusCodes.FORBIDDEN, 'FORBIDDEN');
       }
-      if (!payload?.resolution) {
-        throw new AppError('Resolution is required when resolving.', StatusCodes.BAD_REQUEST, 'RESOLUTION_REQUIRED');
-      }
-      if ((payload.resolution === Resolution.PARKED || payload.resolution === Resolution.DECLINED) && !payload.resolutionReason) {
-        throw new AppError('Resolution reason is required for PARKED or DECLINED.', StatusCodes.BAD_REQUEST, 'REASON_REQUIRED');
-      }
-      dataToUpdate.resolution = payload.resolution;
-      dataToUpdate.resolutionReason = payload.resolutionReason || null;
+      validateResolutionPayload(post, payload);
+      dataToUpdate.resolution = payload!.resolution;
+      dataToUpdate.resolutionReason = payload!.resolutionReason || null;
       // Handbook C6: capture the GitHub handoff URL on Problem/Idea resolutions.
-      if (payload.buildIssueUrl !== undefined && (payload.resolution === Resolution.FIXED || payload.resolution === Resolution.APPROVED)) {
-        dataToUpdate.buildIssueUrl = payload.buildIssueUrl || null;
+      if (payload!.buildIssueUrl !== undefined && (payload!.resolution === Resolution.FIXED || payload!.resolution === Resolution.APPROVED)) {
+        dataToUpdate.buildIssueUrl = payload!.buildIssueUrl || null;
       }
 
       auditActions.push({
         actionType: 'POST_RESOLVED',
-        metadata: { resolution: payload.resolution, buildIssueUrl: dataToUpdate.buildIssueUrl ?? undefined },
+        metadata: { resolution: payload!.resolution, buildIssueUrl: dataToUpdate.buildIssueUrl ?? undefined },
       });
 
     } else if (currentStatus === Status.OPEN && newStatus === Status.RESOLVED) {
@@ -86,26 +117,21 @@ export class WorkflowService {
       if (!canResolve) {
         throw new AppError('Only the owner (or author for questions) can fast-resolve this post.', StatusCodes.FORBIDDEN, 'FORBIDDEN');
       }
-      if (!payload?.resolution) {
-        throw new AppError('Resolution is required when resolving.', StatusCodes.BAD_REQUEST, 'RESOLUTION_REQUIRED');
-      }
-      if ((payload.resolution === Resolution.PARKED || payload.resolution === Resolution.DECLINED) && !payload.resolutionReason) {
-        throw new AppError('Resolution reason is required for PARKED or DECLINED.', StatusCodes.BAD_REQUEST, 'REASON_REQUIRED');
-      }
+      validateResolutionPayload(post, payload);
       if (!post.acknowledgedAt) {
         dataToUpdate.acknowledgedAt = new Date();
       }
       // Ownership claim handled atomically below.
-      dataToUpdate.resolution = payload.resolution;
-      dataToUpdate.resolutionReason = payload.resolutionReason || null;
-      if (payload.buildIssueUrl !== undefined && (payload.resolution === Resolution.FIXED || payload.resolution === Resolution.APPROVED)) {
-        dataToUpdate.buildIssueUrl = payload.buildIssueUrl || null;
+      dataToUpdate.resolution = payload!.resolution;
+      dataToUpdate.resolutionReason = payload!.resolutionReason || null;
+      if (payload!.buildIssueUrl !== undefined && (payload!.resolution === Resolution.FIXED || payload!.resolution === Resolution.APPROVED)) {
+        dataToUpdate.buildIssueUrl = payload!.buildIssueUrl || null;
       }
 
       auditActions.push({ actionType: 'POST_ACKNOWLEDGED', metadata: { note: 'fast-close' } });
       auditActions.push({
         actionType: 'POST_RESOLVED',
-        metadata: { resolution: payload.resolution, buildIssueUrl: dataToUpdate.buildIssueUrl ?? undefined },
+        metadata: { resolution: payload!.resolution, buildIssueUrl: dataToUpdate.buildIssueUrl ?? undefined },
       });
 
     } else if (currentStatus === Status.RESOLVED && newStatus === Status.OPEN) {
@@ -127,19 +153,6 @@ export class WorkflowService {
       );
     }
 
-    // Additional check: Who can resolve by type?
-    if (newStatus === Status.RESOLVED) {
-       if (post.type === Type.PROBLEM || post.type === Type.IDEA) {
-         if (!canActAsOwner) {
-           throw new AppError('Only the owner can resolve a Problem or Idea.', StatusCodes.FORBIDDEN, 'FORBIDDEN');
-         }
-       } else if (post.type === Type.QUESTION) {
-         // author or owner can resolve. (already handled by canActAsOwner above, wait, author can resolve QUESTION?)
-         // Ah, the plan says: "QUESTION: author (knows when their question is answered) or owner."
-         // But above for DISCUSSING->RESOLVED, I enforced `canActAsOwner`. Let me fix that.
-       }
-    }
-
     // Atomic owner claim: if this transition should assign an owner and the post
     // is still unowned, claim it in a single guarded write. If another actor beat
     // us to it, updateMany.count is 0 and we simply proceed with the existing owner
@@ -155,7 +168,7 @@ export class WorkflowService {
       });
     }
 
-    // 4. Update DB transactionally
+    // 4. Update DB transactionally. One audit row per action — no dupes.
     const updateOp = prisma.post.update({
       where: { id: postId },
       data: dataToUpdate,
@@ -163,10 +176,6 @@ export class WorkflowService {
 
     const ops: any[] = [updateOp];
     for (const audit of auditActions) {
-      ops.push(auditService.buildStatusChangeAudit(actorId, postId, audit.metadata));
-      // In real code, auditService might not support overriding actionType natively in buildStatusChangeAudit if it's strictly typed.
-      // Assuming auditService can create arbitrary logs. 
-      // For now, I'll use raw prisma create for exact actionType.
       ops.push(prisma.auditLog.create({
         data: {
           actorId,
@@ -174,13 +183,12 @@ export class WorkflowService {
           actionType: audit.actionType,
           entityType: 'POST',
           entityId: postId,
-          metadata: audit.metadata
-        }
+          metadata: audit.metadata,
+        },
       }));
     }
 
-    // Filter out the `buildStatusChangeAudit` if we manually created the log
-    const [updatedPost, ...logs] = await prisma.$transaction(ops.filter(o => o.constructor.name === 'PrismaPromise' || o.constructor.name === 'Object')); // approximate check
+    const [updatedPost, ...logs] = await prisma.$transaction(ops);
 
     // 5. Emit decoupled internal event for Realtime broadcast
     eventBus.emit(INTERNAL_EVENTS.POST_UPDATED, {

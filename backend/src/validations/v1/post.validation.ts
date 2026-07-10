@@ -2,8 +2,8 @@ import { z } from 'zod';
 
 export const createPostSchema = z.object({
   body: z.object({
-    title: z.string().min(3, 'Title must be at least 3 characters'),
-    description: z.string().min(1, 'Description is required'),
+    title: z.string().min(3, 'Title must be at least 3 characters').max(300, 'Title too long (max 300)'),
+    description: z.string().min(1, 'Description is required').max(20_000, 'Description too long (max 20,000)'),
     type: z.enum(['QUESTION', 'PROBLEM', 'IDEA']),
     section: z.enum(['BILLS', 'INVOICING', 'PATIENTS', 'CASES', 'PARTNERS', 'HOSPITALS', 'DOCTORS', 'WHATSAPP', 'PLATFORM', 'GENERAL']),
     isUseCase: z.preprocess((val) => val === 'true' || val === true, z.boolean().optional()),
@@ -36,7 +36,7 @@ export const reactToPostSchema = z.object({
     id: z.string().regex(/^\d+$/, 'ID must be numeric'),
   }).strict(),
   body: z.object({
-    emoji: z.string().min(1, 'Emoji is required'),
+    emoji: z.string().min(1, 'Emoji is required').max(10, 'Emoji too long'),
   }).strict()
 });
 
@@ -45,8 +45,8 @@ export const updatePostSchema = z.object({
     id: z.string().regex(/^\d+$/, 'ID must be numeric'),
   }).strict(),
   body: z.object({
-    title: z.string().min(3, 'Title must be at least 3 characters').optional(),
-    description: z.string().min(1, 'Description is required').optional(),
+    title: z.string().min(3, 'Title must be at least 3 characters').max(300).optional(),
+    description: z.string().min(1, 'Description is required').max(20_000).optional(),
     type: z.enum(['QUESTION', 'PROBLEM', 'IDEA']).optional(),
     section: z.enum(['BILLS', 'INVOICING', 'PATIENTS', 'CASES', 'PARTNERS', 'HOSPITALS', 'DOCTORS', 'WHATSAPP', 'PLATFORM', 'GENERAL']).optional(),
     isUseCase: z.preprocess((val) => {
