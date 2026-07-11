@@ -6,7 +6,6 @@ import AdminRoute from '@/routes/AdminRoute';
 import AppLayout from '@/components/layout/AppLayout';
 import LoginPage from '@/pages/LoginPage';
 import RegisterPage from '@/pages/RegisterPage';
-import DashboardPage from '@/pages/DashboardPage';
 import FeedPage from '@/pages/FeedPage';
 import ArchivePage from '@/pages/ArchivePage';
 import NotificationsPage from '@/pages/NotificationsPage';
@@ -35,7 +34,7 @@ const App: React.FC = () => (
           <Route index element={<Navigate to="/feed" replace />} />
           <Route path="/feed" element={<FeedPage />} />
           {/* Legacy destinations kept as redirects so old bookmarks still resolve. */}
-          <Route path="/dashboard" element={<DashboardPage />} />
+          <Route path="/dashboard" element={<Navigate to="/feed" replace />} />
           <Route path="/archive" element={<ArchivePage />} />
           <Route path="/notifications" element={<NotificationsPage />} />
           <Route path="/profile" element={<ProfilePage />} />

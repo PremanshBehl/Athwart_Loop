@@ -1,48 +1,31 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { Post } from '@/types';
 import { useAuthStore } from '@/stores/auth.store';
-import Avatar from '@/components/shared/Avatar';
-import StatusBadge from './StatusBadge';
-import AttachmentList from './AttachmentList';
 import {
-  MoreVertical, Edit2, Trash2, MessageSquare, ThumbsUp,
-  AlertTriangle, HelpCircle, Lightbulb, Megaphone,
+  ArrowUp, MessageSquare, MoreVertical, Edit2, Trash2,
 } from 'lucide-react';
-
-// Handbook + redesign: exactly one color per type. Left border is the visual
-// grouping cue; the badge itself is a quiet pill that echoes the same hue.
-const typeAccent: Record<string, { hex: string; label: string; icon: any }> = {
-  QUESTION: { hex: '#8018de', label: 'Question', icon: HelpCircle    },
-  PROBLEM:  { hex: '#f15d24', label: 'Problem',  icon: AlertTriangle },
-  IDEA:     { hex: '#fec530', label: 'Idea',     icon: Lightbulb     },
-};
-
-// SLA dot color: green healthy / amber at-risk / red breached. Tooltip labels
-// the state for accessibility — never color-alone.
-const slaColor: Record<string, { hex: string; label: string }> = {
-  HEALTHY:  { hex: '#2ac25d', label: 'On track — within SLA'   },
-  AT_RISK:  { hex: '#fec530', label: 'At risk — nearing SLA'   },
-  BREACHED: { hex: '#f15d24', label: 'Breached — past SLA'     },
-};
+import {
+  TYPE_META, STATUS_META, SLA_META, SECTION_LABEL,
+  ROLE_COLOR, initialsOf, avatarColor, relativeTime,
+} from '@/lib/loopMeta';
 
 interface Props {
   post: Post;
-  onReact?: (postId: number, emoji: string) => void;
+  onVote?: (postId: number) => void;
   onEdit?: (post: Post) => void;
   onDelete?: (postId: number) => void;
 }
 
-const PostCard: React.FC<Props> = ({ post, onReact, onEdit, onDelete }) => {
+const PostCard: React.FC<Props> = ({ post, onVote, onEdit, onDelete }) => {
   const { user } = useAuthStore();
+  const navigate = useNavigate();
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
   const isAuthor = user?.id === post.authorId;
-  const isAdmin  = user?.role === 'FOUNDER' || user?.role === 'ADMIN';
-  const canEdit   = isAuthor;
-  const canDelete = isAuthor || isAdmin;
-  const showMenu  = canEdit || canDelete;
+  const isAdmin = user?.role === 'FOUNDER' || user?.role === 'ADMIN';
+  const showMenu = isAuthor || isAdmin;
 
   useEffect(() => {
     const onDoc = (e: MouseEvent) => {
@@ -52,150 +35,129 @@ const PostCard: React.FC<Props> = ({ post, onReact, onEdit, onDelete }) => {
     return () => document.removeEventListener('mousedown', onDoc);
   }, [menuOpen]);
 
-  const totalReactions = post.reactionCount ?? post.reactions?.length ?? post._count?.reactions ?? 0;
-  const commentCount   = post.replyCount ?? post._count?.comments ?? post.comments?.length ?? 0;
-  const type           = typeAccent[post.type] ?? { hex: '#737373', label: post.type, icon: HelpCircle };
-  const TypeIcon       = type.icon;
-  const sla            = post.workflowMetrics?.slaStatus ? slaColor[post.workflowMetrics.slaStatus] : null;
-  const isBreached     = post.workflowMetrics?.slaStatus === 'BREACHED';
+  const tm = TYPE_META[post.type] ?? { label: post.type, color: '#737373', bg: '#eee' };
+  const sm = STATUS_META[post.status] ?? { label: post.status, color: '#737373', bg: '#eee' };
+  const sla = post.workflowMetrics?.slaStatus ? SLA_META[post.workflowMetrics.slaStatus] : null;
 
-  const handleDelete = () => {
-    setMenuOpen(false);
-    if (confirm('Delete this post? This cannot be undone.')) onDelete?.(post.id);
-  };
+  const voted = !!post.hasVoted;
+  const voteCount = post.voteCount ?? post._count?.votes ?? 0;
+  const commentCount = post.replyCount ?? post._count?.comments ?? post.comments?.length ?? 0;
+
+  const owner = post.owner;
+  const ownerName = owner ? owner.name.split(' ')[0] : 'Unassigned';
+
+  const open = () => navigate(`/post/${post.id}`);
 
   return (
     <div
-      className="card-interactive p-5 group relative overflow-hidden"
-      style={{ borderLeft: `3px solid ${type.hex}` }}
+      onClick={open}
+      className="relative bg-white rounded-[14px] p-4 pl-[18px] pr-[18px] flex gap-4 cursor-pointer transition-all group"
+      style={{ border: '1px solid #eae5f2' }}
+      onMouseEnter={(e) => {
+        (e.currentTarget as HTMLElement).style.borderColor = '#d3c4ee';
+        (e.currentTarget as HTMLElement).style.boxShadow = '0 4px 16px rgba(128,24,222,0.07)';
+      }}
+      onMouseLeave={(e) => {
+        (e.currentTarget as HTMLElement).style.borderColor = '#eae5f2';
+        (e.currentTarget as HTMLElement).style.boxShadow = 'none';
+      }}
     >
-      {/* ── Top row: type + section + refs + status + SLA ────────── */}
-      <div className="flex items-start justify-between gap-3 mb-3">
-        <div className="flex items-center gap-2 flex-wrap min-w-0">
-          <span
-            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider border"
-            style={{ color: type.hex, borderColor: type.hex + '55', backgroundColor: type.hex + '10' }}
-          >
-            <TypeIcon size={11} /> {type.label}
+      {/* Vote */}
+      <button
+        onClick={(e) => { e.stopPropagation(); onVote?.(post.id); }}
+        className="flex flex-col items-center gap-0.5 px-2 py-1 rounded-[10px] h-fit shrink-0 transition-colors"
+        style={{
+          border: `1.5px solid ${voted ? '#d3c4ee' : '#e8e3f0'}`,
+          background: voted ? '#f3ecfd' : '#fff',
+          color: voted ? '#8018de' : '#8a8194',
+        }}
+        aria-label={voted ? 'Remove vote' : 'Vote'}
+      >
+        <ArrowUp size={15} />
+        <span className="text-[14px] font-bold">{voteCount}</span>
+      </button>
+
+      {/* Body */}
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2 mb-1.5 flex-wrap">
+          <span className="text-[12px] font-bold px-2.5 py-0.5 rounded-md" style={{ color: tm.color, background: tm.bg }}>
+            {tm.label}
           </span>
-
-          <span className="text-[11px] font-mono text-gray-500">{post.postNumber || `#${post.id}`}</span>
-
-          {post.section && (
-            <span className="text-[11px] font-medium text-gray-500 uppercase tracking-wide">
-              {post.section}
+          <span
+            className="text-[12px] font-semibold px-2.5 py-0.5 rounded-md inline-flex items-center gap-1.5"
+            style={{ color: sm.color, background: sm.bg }}
+          >
+            <span className="w-1.5 h-1.5 rounded-full" style={{ background: sm.color }} />
+            {sm.label}
+          </span>
+          {post.isUseCase && (
+            <span className="text-[12px] font-semibold px-2.5 py-0.5 rounded-md" style={{ color: '#6a0fc0', background: '#ede3ff' }}>
+              Use case
             </span>
           )}
-
-          {post.linkedEntityType && post.linkedEntityId && (
-            <span
-              className="text-[11px] font-mono text-brand-primary bg-brand-light/50 px-1.5 py-0.5 rounded"
-              title={`Linked ${post.linkedEntityType.toLowerCase()}`}
-            >
-              [{post.linkedEntityType}] {post.linkedEntityId}
-            </span>
-          )}
-
-          {post.campaign && (
-            <Link
-              to={`/campaigns/${post.campaign.id}`}
-              onClick={(e) => e.stopPropagation()}
-              className="inline-flex items-center gap-1 text-[10px] font-semibold text-brand-primary hover:underline"
-              title={post.campaign.title}
-            >
-              <Megaphone size={10} />
-              {post.campaign.title.length > 22 ? post.campaign.title.slice(0, 22) + '…' : post.campaign.title}
-            </Link>
-          )}
+          <span className="text-[12px] text-ink-whisper font-heading">{post.postNumber || `#${post.id}`}</span>
         </div>
 
-        <div className="flex items-center gap-2 shrink-0">
-          {sla && (
+        <h3 className="font-heading text-[17px] text-ink mb-1 leading-[1.3]">{post.title}</h3>
+        <p className="text-ink-faint text-[14px] leading-[1.5] m-0 line-clamp-2">{post.description}</p>
+
+        <div className="flex items-center gap-4 mt-[11px] text-[12.5px]" style={{ color: '#8a8194' }}>
+          <span className="inline-flex items-center gap-1.5">
             <span
-              className="w-2 h-2 rounded-full"
-              style={{ backgroundColor: sla.hex, boxShadow: isBreached ? `0 0 0 3px ${sla.hex}22` : undefined }}
-              title={sla.label}
-              aria-label={sla.label}
-            />
+              className="w-5 h-5 rounded-full text-white grid place-items-center text-[9px] font-bold"
+              style={{ background: owner ? (ROLE_COLOR[owner.role] ?? avatarColor(owner.role, owner.id)) : '#a89fb5' }}
+            >
+              {owner ? initialsOf(owner.name) : '—'}
+            </span>
+            {ownerName}
+          </span>
+          <span>{SECTION_LABEL[post.section] ?? post.section}</span>
+          <span className="inline-flex items-center gap-1.5">
+            <MessageSquare size={14} /> {commentCount}
+          </span>
+          {post.status !== 'RESOLVED' && sla && (
+            <span className="font-semibold" style={{ color: sla.color }}>{sla.label}</span>
           )}
-          <StatusBadge status={post.status} />
-          {showMenu && (
-            <div className="relative" ref={menuRef}>
-              <button
-                onClick={(e) => { e.preventDefault(); setMenuOpen((o) => !o); }}
-                className="p-1 rounded-md hover:bg-gray-100 text-gray-400 hover:text-gray-700 transition-colors"
-                aria-label="Post actions"
-              >
-                <MoreVertical size={16} />
-              </button>
-              {menuOpen && (
-                <div className="absolute right-0 top-full mt-1 w-36 bg-white border border-surface-border rounded-xl shadow-lg z-10 py-1 overflow-hidden">
-                  {canEdit && (
-                    <button
-                      onClick={(e) => { e.preventDefault(); setMenuOpen(false); onEdit?.(post); }}
-                      className="w-full flex items-center gap-2 text-left px-3 py-2.5 text-sm text-gray-600 hover:bg-gray-50 hover:text-brand-primary transition-colors"
-                    >
-                      <Edit2 size={14} /> Edit
-                    </button>
-                  )}
-                  {canDelete && (
-                    <button
-                      onClick={(e) => { e.preventDefault(); handleDelete(); }}
-                      className="w-full flex items-center gap-2 text-left px-3 py-2.5 text-sm text-accent-orange hover:bg-accent-orange/10 transition-colors"
-                    >
-                      <Trash2 size={14} /> Delete
-                    </button>
-                  )}
-                </div>
+          <span className="ml-auto">{relativeTime(post.createdAt)}</span>
+        </div>
+      </div>
+
+      {/* Author/admin actions — quiet hover menu, absent from the mock but kept
+          so board-level edit/delete isn't lost. */}
+      {showMenu && (
+        <div className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity" ref={menuRef}>
+          <button
+            onClick={(e) => { e.stopPropagation(); setMenuOpen((o) => !o); }}
+            className="p-1 rounded-md text-ink-whisper hover:text-ink hover:bg-brand-softer/60"
+            aria-label="Post actions"
+          >
+            <MoreVertical size={16} />
+          </button>
+          {menuOpen && (
+            <div className="absolute right-0 top-full mt-1 w-36 bg-white rounded-xl shadow-lg z-10 py-1 overflow-hidden" style={{ border: '1px solid #eae5f2' }}>
+              {isAuthor && (
+                <button
+                  onClick={(e) => { e.stopPropagation(); setMenuOpen(false); onEdit?.(post); }}
+                  className="w-full flex items-center gap-2 text-left px-3 py-2.5 text-sm text-ink-muted hover:bg-surface-hover"
+                >
+                  <Edit2 size={14} /> Edit
+                </button>
               )}
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setMenuOpen(false);
+                  if (confirm('Delete this post? This cannot be undone.')) onDelete?.(post.id);
+                }}
+                className="w-full flex items-center gap-2 text-left px-3 py-2.5 text-sm hover:bg-[#fdece4]"
+                style={{ color: '#f15d24' }}
+              >
+                <Trash2 size={14} /> Delete
+              </button>
             </div>
           )}
         </div>
-      </div>
-
-      {/* ── Title + body ─────────────────────────────────────────── */}
-      <Link to={`/post/${post.id}`} className="block">
-        <h3 className="text-[17px] font-bold text-gray-900 group-hover:text-brand-primary transition-colors mb-1 leading-snug line-clamp-2">
-          {post.title}
-        </h3>
-        <p className="text-sm text-gray-600 line-clamp-2 leading-relaxed">
-          {post.description}
-        </p>
-      </Link>
-
-      <AttachmentList attachments={post.attachments} compact />
-
-      {/* ── Bottom row: author · owner · counts ──────────────────── */}
-      <div className="flex items-center justify-between mt-4 pt-3 border-t border-surface-border/60">
-        <div className="flex items-center gap-2 min-w-0">
-          <Avatar user={post.author} size="sm" />
-          <div className="min-w-0">
-            <p className="text-[12px] font-semibold text-gray-800 truncate">{post.author?.name}</p>
-            <p className="text-[10px] text-gray-500 truncate">
-              {post.owner && post.owner.id !== post.author?.id
-                ? <>owner: <span className="text-gray-700 font-medium">{post.owner.name}</span></>
-                : <>{new Date(post.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</>}
-            </p>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-1 text-gray-500 text-xs font-medium">
-          <button
-            onClick={(e) => { e.preventDefault(); onReact?.(post.id, '👍'); }}
-            className="flex items-center gap-1 hover:text-brand-primary hover:bg-brand-light px-2 py-1 rounded-md transition-all"
-            aria-label="Like"
-          >
-            <ThumbsUp size={13} /> <span>{totalReactions}</span>
-          </button>
-          <Link
-            to={`/post/${post.id}`}
-            className="flex items-center gap-1 hover:text-brand-primary hover:bg-brand-light px-2 py-1 rounded-md transition-all"
-            aria-label="Comments"
-          >
-            <MessageSquare size={13} /> <span>{commentCount}</span>
-          </Link>
-        </div>
-      </div>
+      )}
     </div>
   );
 };
