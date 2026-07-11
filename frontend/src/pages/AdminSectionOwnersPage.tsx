@@ -1,12 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import { Navigate } from 'react-router-dom';
-import { Users, Save } from 'lucide-react';
 import api from '@/api/axios';
 import { useAuthStore } from '@/stores/auth.store';
 import { User } from '@/types';
-import Loader from '@/components/shared/Loader';
-import Avatar from '@/components/shared/Avatar';
 import toast from 'react-hot-toast';
+import { SECTION_LABEL, ROLE_LABEL, ROLE_COLOR, initialsOf } from '@/lib/loopMeta';
 
 interface OwnerRow {
   section: string;
@@ -37,8 +35,7 @@ const AdminSectionOwnersPage: React.FC = () => {
       .finally(() => setLoading(false));
   }, [isAdmin]);
 
-  if (!isAdmin) return <Navigate to="/dashboard" replace />;
-  if (loading) return <div className="pt-20"><Loader /></div>;
+  if (!isAdmin) return <Navigate to="/feed" replace />;
 
   const save = async (section: string) => {
     const ownerId = Number(pending[section]);
@@ -52,7 +49,7 @@ const AdminSectionOwnersPage: React.FC = () => {
       const updated = res.data as unknown as OwnerRow;
       setRows((prev) => prev.map((r) => (r.section === section ? updated : r)));
       setPending((p) => { const { [section]: _, ...rest } = p; return rest; });
-      toast.success(`${section} owner updated`);
+      toast.success(`${SECTION_LABEL[section] ?? section} owner updated`);
     } catch (err: any) {
       toast.error(err.response?.data?.message || 'Failed to update owner');
     } finally {
@@ -61,68 +58,76 @@ const AdminSectionOwnersPage: React.FC = () => {
   };
 
   return (
-    <div className="max-w-3xl mx-auto space-y-6 pb-20">
-      <div>
-        <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
-          <Users size={18} className="text-brand-primary" /> Section owners
-        </h2>
-        <p className="text-xs text-gray-500 mt-1">
-          Handbook B7 · every section has one owner responsible for responding within the SLA.
-          Reassigning here only affects <em>new</em> posts — in-flight owners stay put.
-        </p>
-      </div>
+    <div className="al-view max-w-[900px]">
+      <h1 className="font-heading text-[30px] text-ink mb-1">Section Owners</h1>
+      <p className="text-ink-faint m-0 mb-6 text-[15px]">
+        Every section has one owner responsible for responding within the SLA. Reassigning here only
+        affects new posts — in-flight owners stay put.
+      </p>
 
-      <div className="card p-0 overflow-hidden">
-        <table className="w-full text-sm">
-          <thead className="bg-gray-50 border-b border-surface-border">
-            <tr className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">
-              <th className="px-4 py-3 w-32">Section</th>
-              <th className="px-4 py-3">Current owner</th>
-              <th className="px-4 py-3 w-72">Reassign to…</th>
-              <th className="px-4 py-3 w-20"></th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((row) => (
-              <tr key={row.section} className="border-b border-surface-border last:border-b-0">
-                <td className="px-4 py-3 font-mono font-semibold text-gray-800">{row.section}</td>
-                <td className="px-4 py-3">
-                  {row.owner ? (
-                    <div className="flex items-center gap-2">
-                      <Avatar user={row.owner as any} size="sm" />
-                      <span className="text-gray-800 font-medium">{row.owner.name}</span>
-                      <span className="text-xs text-gray-400">{row.owner.role?.replace('_', '/')}</span>
-                    </div>
+      <div className="bg-white rounded-2xl overflow-hidden" style={{ border: '1px solid #eae5f2' }}>
+        {loading ? (
+          <div className="p-5 flex flex-col gap-2">
+            {[0, 1, 2, 3, 4].map((i) => <div key={i} className="al-skel" style={{ height: 48 }} />)}
+          </div>
+        ) : (
+          rows.map((row, i) => {
+            const owner = row.owner;
+            const dirty = !!pending[row.section];
+            return (
+              <div
+                key={row.section}
+                className="flex items-center gap-3.5 px-5 py-[15px]"
+                style={{ borderBottom: i === rows.length - 1 ? 'none' : '1px solid #f0ecf7' }}
+              >
+                {/* Section */}
+                <span className="w-[92px] shrink-0 text-[14px] font-semibold text-ink">
+                  {SECTION_LABEL[row.section] ?? row.section}
+                </span>
+
+                {/* Current owner */}
+                <div className="flex-1 min-w-0 flex items-center gap-2">
+                  {owner ? (
+                    <>
+                      <span
+                        className="w-7 h-7 rounded-full text-white grid place-items-center text-[10px] font-bold shrink-0"
+                        style={{ background: ROLE_COLOR[owner.role] ?? '#8018de' }}
+                      >
+                        {initialsOf(owner.name)}
+                      </span>
+                      <span className="text-[14px] text-ink font-medium truncate">{owner.name}</span>
+                      <span className="text-[12px] text-ink-whisper shrink-0">{ROLE_LABEL[owner.role] ?? owner.role}</span>
+                    </>
                   ) : (
-                    <span className="text-xs italic text-gray-400">— unassigned —</span>
+                    <span className="text-[13px] italic text-ink-whisper">— unassigned —</span>
                   )}
-                </td>
-                <td className="px-4 py-3">
-                  <select
-                    className="input bg-gray-50 focus:bg-white text-sm"
-                    value={pending[row.section] ?? ''}
-                    onChange={(e) => setPending((p) => ({ ...p, [row.section]: e.target.value }))}
-                  >
-                    <option value="">Select user…</option>
-                    {users.map((u) => (
-                      <option key={u.id} value={u.id}>{u.name} · {u.role?.replace('_', '/')}</option>
-                    ))}
-                  </select>
-                </td>
-                <td className="px-4 py-3">
-                  <button
-                    onClick={() => save(row.section)}
-                    disabled={savingSection === row.section || !pending[row.section]}
-                    className="btn-primary text-xs py-1.5 px-3 disabled:opacity-40 flex items-center gap-1"
-                  >
-                    <Save size={12} />
-                    {savingSection === row.section ? '…' : 'Save'}
-                  </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+                </div>
+
+                {/* Reassign */}
+                <select
+                  value={pending[row.section] ?? ''}
+                  onChange={(e) => setPending((p) => ({ ...p, [row.section]: e.target.value }))}
+                  className="px-3 py-2 rounded-[9px] text-[13.5px] font-medium text-ink focus:outline-none w-[200px] shrink-0"
+                  style={{ border: '1.5px solid #e8e3f0', background: '#fff' }}
+                >
+                  <option value="">Reassign to…</option>
+                  {users.map((u) => (
+                    <option key={u.id} value={u.id}>{u.name} · {ROLE_LABEL[u.role] ?? u.role}</option>
+                  ))}
+                </select>
+
+                <button
+                  onClick={() => save(row.section)}
+                  disabled={savingSection === row.section || !dirty}
+                  className="px-4 py-2 rounded-[9px] text-[13.5px] font-semibold text-white shrink-0 disabled:opacity-40"
+                  style={{ background: '#8018de' }}
+                >
+                  {savingSection === row.section ? '…' : 'Save'}
+                </button>
+              </div>
+            );
+          })
+        )}
       </div>
     </div>
   );
