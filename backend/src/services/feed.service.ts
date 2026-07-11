@@ -14,7 +14,7 @@ async function searchPostIds(term: string, limit = 200): Promise<number[]> {
     WHERE
       title       ILIKE ${ilike}
       OR description ILIKE ${ilike}
-      OR "refCode"   ILIKE ${ilike}
+      OR "postNumber" ILIKE ${ilike}
     ORDER BY
       CASE WHEN title ILIKE ${ilike} THEN 0 ELSE 1 END,
       id DESC

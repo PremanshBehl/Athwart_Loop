@@ -46,7 +46,7 @@ const CreatePostModal: React.FC<Props> = ({ isOpen, onClose, post }) => {
   const [existingAttachments, setExistingAttachments] = useState(post?.attachments ?? []);
   const [removedAttachmentIds, setRemovedAttachmentIds] = useState<number[]>([]);
 
-  const [duplicateMatch, setDuplicateMatch] = useState<any>(null);
+  const [duplicateMatches, setDuplicateMatches] = useState<any[]>([]);
   const [checkingDuplicate, setCheckingDuplicate] = useState(false);
   const [activeCampaigns, setActiveCampaigns] = useState<ActiveCampaign[]>([]);
 
@@ -59,13 +59,13 @@ const CreatePostModal: React.FC<Props> = ({ isOpen, onClose, post }) => {
   const [userTouchedSection, setUserTouchedSection] = useState(false);
 
   useEffect(() => {
-    if (isEditMode || !form.title || form.title.trim().length < 10) { setDuplicateMatch(null); return; }
+    if (isEditMode || !form.title || form.title.trim().length < 3) { setDuplicateMatches([]); return; }
     const timer = setTimeout(async () => {
       setCheckingDuplicate(true);
       try {
         const { data } = await api.post('/intelligence/duplicate-check', { title: form.title, body: form.description });
-        setDuplicateMatch(data?.found ? data.match : null);
-      } catch { setDuplicateMatch(null); }
+        setDuplicateMatches(data?.found && data.matches ? data.matches : []);
+      } catch { setDuplicateMatches([]); }
       finally { setCheckingDuplicate(false); }
     }, 700);
     return () => clearTimeout(timer);
@@ -211,20 +211,24 @@ const CreatePostModal: React.FC<Props> = ({ isOpen, onClose, post }) => {
           />
           <div className="h-[18px] text-[12px] mb-1.5" style={{ color: '#f15d24' }}>{fieldErr.title || ''}</div>
 
-          {duplicateMatch && !isEditMode && (
+          {duplicateMatches.length > 0 && !isEditMode && (
             <div className="mb-3 p-3.5 rounded-xl" style={{ background: '#faf7ff', border: '1px solid #d3c4ee' }}>
-              <div className="flex items-center gap-2 text-[13px] font-bold" style={{ color: '#6a0fc0' }}>
-                <Sparkles size={15} /> This may already be answered.
+              <div className="flex items-center gap-2 text-[13px] font-bold mb-2" style={{ color: '#6a0fc0' }}>
+                <Sparkles size={15} /> These may already answer your question.
               </div>
-              <p className="text-[13px] text-ink-soft mt-1.5 leading-[1.5] m-0">
-                <span className="font-heading font-semibold" style={{ color: '#8018de' }}>{duplicateMatch.postNumber || 'Post'}</span>
-                {' — '}<span className="italic">"{duplicateMatch.title}"</span>{'. '}
-                {duplicateMatch.url && (
-                  <a href={duplicateMatch.url} target="_blank" rel="noreferrer" className="font-semibold underline inline-flex items-center gap-1" style={{ color: '#8018de' }}>
-                    Read it <ExternalLink size={12} />
-                  </a>
-                )}
-              </p>
+              <ul className="m-0 pl-0 flex flex-col gap-2" style={{ listStyle: 'none' }}>
+                {duplicateMatches.map((match: any) => (
+                  <li key={match.id} className="text-[13px] text-ink-soft leading-[1.4]">
+                    <span className="font-heading font-semibold" style={{ color: '#8018de' }}>{match.postNumber || 'Post'}</span>
+                    {' — '}<span className="italic">"{match.title}"</span>{'. '}
+                    {match.url && (
+                      <a href={match.url} target="_blank" rel="noreferrer" className="font-semibold underline inline-flex items-center gap-1" style={{ color: '#8018de' }}>
+                        Read it <ExternalLink size={12} />
+                      </a>
+                    )}
+                  </li>
+                ))}
+              </ul>
             </div>
           )}
 

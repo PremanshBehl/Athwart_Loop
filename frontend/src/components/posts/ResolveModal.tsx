@@ -89,7 +89,19 @@ const ResolveModal: React.FC<Props> = ({ isOpen, onClose, postId, postType, isUs
           <div className="grid grid-cols-2 gap-2 mb-4">
             {RESOLUTIONS.map((r) => {
               const on = resolution === r;
-              const dis = !!isUseCase && r !== 'RULE_DECIDED';
+              let isValidForType = true;
+              if (isUseCase) {
+                isValidForType = r === 'RULE_DECIDED';
+              } else {
+                if (postType === 'QUESTION') {
+                  isValidForType = ['ANSWERED', 'DUPLICATE'].includes(r);
+                } else if (postType === 'PROBLEM') {
+                  isValidForType = ['FIXED', 'PARKED', 'DECLINED', 'DUPLICATE'].includes(r);
+                } else if (postType === 'IDEA') {
+                  isValidForType = ['APPROVED', 'PARKED', 'DECLINED', 'DUPLICATE'].includes(r);
+                }
+              }
+              const dis = !isValidForType;
               return (
                 <button
                   key={r}

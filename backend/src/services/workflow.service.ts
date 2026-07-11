@@ -30,6 +30,18 @@ function validateResolutionPayload(
   if (post.isUseCase && resolution !== Resolution.RULE_DECIDED) {
     throw new AppError('Use Cases must resolve with RULE_DECIDED.', StatusCodes.BAD_REQUEST, 'RULE_DECIDED_REQUIRED');
   }
+  if (!post.isUseCase) {
+    if (post.type === Type.QUESTION && !([Resolution.ANSWERED, Resolution.DUPLICATE] as Resolution[]).includes(resolution)) {
+      throw new AppError('Questions can only be resolved as ANSWERED or DUPLICATE.', StatusCodes.BAD_REQUEST, 'INVALID_RESOLUTION_FOR_TYPE');
+    }
+    if (post.type === Type.PROBLEM && !([Resolution.FIXED, Resolution.PARKED, Resolution.DECLINED, Resolution.DUPLICATE] as Resolution[]).includes(resolution)) {
+      throw new AppError('Problems can only be resolved as FIXED, PARKED, DECLINED, or DUPLICATE.', StatusCodes.BAD_REQUEST, 'INVALID_RESOLUTION_FOR_TYPE');
+    }
+    if (post.type === Type.IDEA && !([Resolution.APPROVED, Resolution.PARKED, Resolution.DECLINED, Resolution.DUPLICATE] as Resolution[]).includes(resolution)) {
+      throw new AppError('Ideas can only be resolved as APPROVED, PARKED, DECLINED, or DUPLICATE.', StatusCodes.BAD_REQUEST, 'INVALID_RESOLUTION_FOR_TYPE');
+    }
+  }
+
   const problemOrIdea = post.type === Type.PROBLEM || post.type === Type.IDEA;
   const fixedOrApproved = resolution === Resolution.FIXED || resolution === Resolution.APPROVED;
   if (problemOrIdea && fixedOrApproved && !buildIssueUrl?.trim()) {
