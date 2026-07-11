@@ -1,127 +1,66 @@
 import React, { useEffect, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import api from '@/api/axios';
 import { useAuthStore } from '@/stores/auth.store';
 import { User, Post } from '@/types';
-import Avatar from '@/components/shared/Avatar';
-import Loader from '@/components/shared/Loader';
-import PostCard from '@/components/posts/PostCard';
-import { usePostStore } from '@/stores/post.store';
+import { ROLE_LABEL, ROLE_COLOR, STATUS_META, initialsOf } from '@/lib/loopMeta';
 
 const ProfilePage: React.FC = () => {
   const { id } = useParams();
+  const navigate = useNavigate();
   const { user: currentUser, fetchMe } = useAuthStore();
 
   const [profileUser, setProfileUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const [posts, setPosts] = useState<Post[]>([]);
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState({ name: '', bio: '', avatarUrl: '' });
   const [saving, setSaving] = useState(false);
-  
-  const [posts, setPosts] = useState<Post[]>([]);
-  const [postsLoading, setPostsLoading] = useState(false);
-
-  interface ContribPost {
-    id: number;
-    postNumber?: string;
-    title: string;
-    type: string;
-    section: string;
-    status: string;
-    resolution?: string | null;
-    updatedAt: string;
-  }
-  interface Contributions {
-    raised: ContribPost[];
-    resolved: ContribPost[];
-    answered: ContribPost[];
-    counts: { raised: number; resolved: number; answered: number };
-  }
-  const [contributions, setContributions] = useState<Contributions | null>(null);
-  const [contribLoading, setContribLoading] = useState(false);
-  const [since, setSince] = useState<'all' | '30d' | '7d'>('all');
-  const [activeTab, setActiveTab] = useState<'posts' | 'contributions'>('posts');
 
   const isOwnProfile = !id || Number(id) === currentUser?.id;
-  const canViewContributions =
-    isOwnProfile || currentUser?.role === 'ADMIN' || currentUser?.role === 'FOUNDER';
 
   useEffect(() => {
-    const fetchUser = async () => {
+    let cancelled = false;
+    const load = async () => {
       setLoading(true);
       try {
-        let userToSet = null;
+        let u: User | null = null;
         if (isOwnProfile) {
-          userToSet = currentUser;
-          setForm({
-            name: currentUser?.name || '',
-            bio: currentUser?.bio || '',
-            avatarUrl: currentUser?.avatarUrl || '',
-          });
+          u = currentUser ?? null;
+          if (currentUser) setForm({ name: currentUser.name || '', bio: currentUser.bio || '', avatarUrl: currentUser.avatarUrl || '' });
         } else {
           const { data } = await api.get(`/users/${id}`);
-          userToSet = data;
+          u = data;
         }
-        setProfileUser(userToSet);
-        
-        if (userToSet) {
-          setPostsLoading(true);
+        if (cancelled) return;
+        setProfileUser(u);
+
+        if (u) {
+          // Best-effort authored-posts fetch with graceful fallbacks.
+          let list: any[] = [];
           try {
-            let posts: any[] = [];
+            const res = await api.get('/posts', { params: { authorId: u.id, limit: 50 } });
+            list = Array.isArray(res.data) ? res.data : [];
+          } catch {
             try {
-              // 1st try: dedicated endpoint (works once Render deploys)
-              const res = await api.get(`/users/${userToSet.id}/posts`);
-              posts = Array.isArray(res.data) ? res.data : [];
-            } catch {
-              try {
-                // 2nd try: feed with authorId param (works once Render deploys the schema update)
-                const res = await api.get(`/posts`, { params: { authorId: userToSet.id } });
-                posts = Array.isArray(res.data) ? res.data : [];
-              } catch {
-                // 3rd fallback: fetch feed and filter client-side (works on any version of backend)
-                const res = await api.get(`/posts`, { params: { limit: 50 } });
-                const all = Array.isArray(res.data) ? res.data : [];
-                posts = all.filter((p: any) => p.author?.id === userToSet.id);
-              }
-            }
-            setPosts(posts);
-          } catch (err) {
-            console.error('Failed to fetch user posts', err);
-          } finally {
-            setPostsLoading(false);
+              const res = await api.get('/posts', { params: { limit: 50 } });
+              const all = Array.isArray(res.data) ? res.data : [];
+              list = all.filter((p: any) => p.author?.id === u!.id);
+            } catch { list = []; }
           }
+          if (!cancelled) setPosts(list);
         }
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     };
-    fetchUser();
+    load();
+    return () => { cancelled = true; };
   }, [id, currentUser, isOwnProfile]);
-
-  useEffect(() => {
-    if (!profileUser || !canViewContributions) {
-      setContributions(null);
-      return;
-    }
-    const params: Record<string, string> = {};
-    if (since === '30d') params.since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
-    if (since === '7d')  params.since = new Date(Date.now() -  7 * 24 * 60 * 60 * 1000).toISOString();
-    setContribLoading(true);
-    api
-      .get(`/users/${profileUser.id}/contributions`, { params })
-      .then((res) => {
-        // Backend wraps in { data: ... }; api layer may or may not unwrap
-        const payload = res.data?.data ?? res.data;
-        setContributions(payload);
-      })
-      .catch(() => setContributions(null))
-      .finally(() => setContribLoading(false));
-  }, [profileUser, canViewContributions, since]);
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!isOwnProfile) return;
-
     setSaving(true);
     try {
       await api.patch('/auth/me', form);
@@ -132,208 +71,114 @@ const ProfilePage: React.FC = () => {
     }
   };
 
-  if (loading) return <Loader />;
-  if (!profileUser) return <div className="text-center text-gray-500 py-10">User not found</div>;
+  if (loading) {
+    return (
+      <div className="al-view max-w-[820px]">
+        <div className="al-skel mb-5" style={{ height: 138 }} />
+        <div className="grid grid-cols-3 gap-4"><div className="al-skel" style={{ height: 90 }} /><div className="al-skel" style={{ height: 90 }} /><div className="al-skel" style={{ height: 90 }} /></div>
+      </div>
+    );
+  }
+  if (!profileUser) return <div className="text-center text-ink-faint py-16">User not found</div>;
+
+  const authored = posts.length;
+  const resolved = posts.filter((p) => p.status === 'RESOLVED').length;
+  const open = posts.filter((p) => p.status !== 'RESOLVED').length;
+  const cards = [
+    { value: authored, label: 'Posts authored' },
+    { value: open, label: 'Still open' },
+    { value: resolved, label: 'Resolved' },
+  ];
 
   return (
-    <div className="max-w-2xl mx-auto space-y-6 pb-20">
-      <div className="card overflow-hidden">
-        {/* Cover */}
-        <div className="h-32 bg-gradient-to-r from-brand-400 to-indigo-500"></div>
-
-        <div className="px-6 pb-6 relative">
-          {/* Avatar */}
-          <div className="-mt-12 mb-4 flex justify-between items-end">
-            <div className="rounded-full p-1 bg-white inline-block">
-              <Avatar user={profileUser} size="lg" className="w-24 h-24 text-3xl" />
-            </div>
-            {isOwnProfile && !editing && (
-              <button onClick={() => setEditing(true)} className="btn-ghost text-sm">
-                Edit Profile
-              </button>
-            )}
-          </div>
-
-          {editing ? (
-            <form onSubmit={handleSave} className="space-y-4 animate-in">
-              <div>
-                <label className="label">Name</label>
-                <input className="input" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} required />
-              </div>
-              <div>
-                <label className="label">Bio</label>
-                <textarea className="input resize-none min-h-[80px]" value={form.bio} onChange={e => setForm({ ...form, bio: e.target.value })} />
-              </div>
-              <div>
-                <label className="label">Avatar URL (Optional)</label>
-                <input className="input" type="url" value={form.avatarUrl} onChange={e => setForm({ ...form, avatarUrl: e.target.value })} />
-              </div>
-              <div className="flex gap-2 justify-end pt-2">
-                <button type="button" onClick={() => setEditing(false)} className="btn-ghost">Cancel</button>
-                <button type="submit" disabled={saving} className="btn-primary">{saving ? 'Saving…' : 'Save Changes'}</button>
-              </div>
-            </form>
-          ) : (
-            <div className="animate-in">
-              <h1 className="text-2xl font-bold text-gray-900 mb-1">{profileUser.name}</h1>
-              <p className="text-sm font-medium text-brand-600 mb-4">{profileUser.role?.replace('_', '/')}</p>
-
-              <div className="text-gray-600 text-sm whitespace-pre-wrap mb-6">
-                {profileUser.bio || <span className="italic text-gray-400">No bio provided</span>}
-              </div>
-
-              <div className="flex items-center gap-6 pt-4 border-t border-surface-border text-sm">
-                <div className="flex flex-col">
-                  <span className="font-bold text-gray-900 text-lg">{profileUser._count?.posts ?? 0}</span>
-                  <span className="text-gray-500">Posts</span>
-                </div>
-                <div className="flex flex-col">
-                  <span className="font-bold text-gray-900 text-lg">{profileUser._count?.comments ?? 0}</span>
-                  <span className="text-gray-500">Comments</span>
-                </div>
-                <div className="ml-auto text-gray-400 text-xs text-right">
-                  Joined<br />
-                  {new Date(profileUser.createdAt).toLocaleDateString()}
-                </div>
-              </div>
-            </div>
-          )}
+    <div className="al-view max-w-[820px]">
+      {/* Hero */}
+      <div className="rounded-[18px] p-[30px] text-white flex items-center gap-[22px] mb-[22px] relative" style={{ background: 'linear-gradient(120deg,#8018de,#a24bec)' }}>
+        <span
+          className="w-[78px] h-[78px] rounded-full grid place-items-center text-[28px] font-bold font-heading shrink-0"
+          style={{ background: 'rgba(255,255,255,.2)', border: '2px solid rgba(255,255,255,.5)' }}
+        >
+          {initialsOf(profileUser.name)}
+        </span>
+        <div className="min-w-0">
+          <h1 className="font-heading text-[30px] text-white leading-tight">{profileUser.name}</h1>
+          <p className="m-0 mt-1 text-[15px]" style={{ color: '#ede3ff' }}>
+            {ROLE_LABEL[profileUser.role] ?? profileUser.role} · {profileUser.email}
+          </p>
         </div>
+        {isOwnProfile && !editing && (
+          <button
+            onClick={() => setEditing(true)}
+            className="ml-auto self-start px-3.5 py-2 rounded-[10px] text-[13px] font-semibold text-white"
+            style={{ background: 'rgba(255,255,255,.18)', border: '1px solid rgba(255,255,255,.35)' }}
+          >
+            Edit profile
+          </button>
+        )}
       </div>
 
-      {!editing && (
-        <div className="space-y-4">
-          <div className="flex items-center justify-between border-b border-surface-border">
-            <div className="flex gap-1">
-              <button
-                onClick={() => setActiveTab('posts')}
-                className={`text-sm font-semibold px-4 py-2 border-b-2 -mb-px transition-colors ${
-                  activeTab === 'posts'
-                    ? 'border-brand-primary text-brand-primary'
-                    : 'border-transparent text-gray-500 hover:text-gray-800'
-                }`}
-              >
-                Recent posts
-              </button>
-              {canViewContributions && (
-                <button
-                  onClick={() => setActiveTab('contributions')}
-                  className={`text-sm font-semibold px-4 py-2 border-b-2 -mb-px transition-colors ${
-                    activeTab === 'contributions'
-                      ? 'border-brand-primary text-brand-primary'
-                      : 'border-transparent text-gray-500 hover:text-gray-800'
-                  }`}
-                >
-                  Contributions
-                </button>
-              )}
-            </div>
-            {activeTab === 'contributions' && canViewContributions && (
-              <div className="flex bg-gray-100 p-1 rounded-lg text-[11px] font-semibold">
-                {(['all', '30d', '7d'] as const).map((w) => (
-                  <button
-                    key={w}
-                    onClick={() => setSince(w)}
-                    className={`px-2.5 py-1 rounded-md transition-colors ${
-                      since === w ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-800'
-                    }`}
-                  >
-                    {w === 'all' ? 'All time' : `Last ${w}`}
-                  </button>
-                ))}
-              </div>
-            )}
+      {/* Edit form */}
+      {editing && (
+        <form onSubmit={handleSave} className="bg-white rounded-2xl p-5 mb-[22px] flex flex-col gap-3" style={{ border: '1px solid #eae5f2' }}>
+          <div>
+            <label className="block text-[13px] font-semibold mb-1.5">Name</label>
+            <input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required className="w-full px-3.5 py-2.5 rounded-[10px] text-[15px] focus:outline-none" style={{ border: '1.5px solid #e2e2e2' }} />
           </div>
+          <div>
+            <label className="block text-[13px] font-semibold mb-1.5">Bio</label>
+            <textarea value={form.bio} onChange={(e) => setForm({ ...form, bio: e.target.value })} rows={2} className="w-full px-3.5 py-2.5 rounded-[10px] text-[14px] resize-y focus:outline-none" style={{ border: '1.5px solid #e2e2e2' }} />
+          </div>
+          <div>
+            <label className="block text-[13px] font-semibold mb-1.5">Avatar URL <span className="text-ink-whisper font-normal">(optional)</span></label>
+            <input type="url" value={form.avatarUrl} onChange={(e) => setForm({ ...form, avatarUrl: e.target.value })} className="w-full px-3.5 py-2.5 rounded-[10px] text-[14px] focus:outline-none" style={{ border: '1.5px solid #e2e2e2' }} />
+          </div>
+          <div className="flex justify-end gap-2.5">
+            <button type="button" onClick={() => setEditing(false)} className="px-5 py-2.5 rounded-[10px] font-semibold text-[14px] bg-white text-ink-muted" style={{ border: '1.5px solid #e2e2e2' }}>Cancel</button>
+            <button type="submit" disabled={saving} className="px-5 py-2.5 rounded-[10px] font-semibold text-[14px] text-white disabled:opacity-60" style={{ background: '#8018de' }}>{saving ? 'Saving…' : 'Save'}</button>
+          </div>
+        </form>
+      )}
 
-          {activeTab === 'posts' && (
-            postsLoading ? (
-              <Loader />
-            ) : posts.length > 0 ? (
-              <div className="space-y-4">
-                {posts.map((post) => <PostCard key={post.id} post={post as any} />)}
-              </div>
-            ) : (
-              <div className="text-gray-500 text-center py-6 bg-white rounded-lg border border-surface-border">
-                {isOwnProfile ? "You haven't posted anything yet." : "This user hasn't posted anything yet."}
-              </div>
-            )
-          )}
+      {/* Contribution cards */}
+      <div className="grid grid-cols-3 gap-4 mb-[22px]">
+        {cards.map((c) => (
+          <div key={c.label} className="bg-white rounded-2xl p-5 text-center" style={{ border: '1px solid #eae5f2' }}>
+            <div className="font-heading text-[32px] font-bold" style={{ color: '#8018de' }}>{c.value}</div>
+            <div className="text-[13px] text-ink-faint mt-0.5">{c.label}</div>
+          </div>
+        ))}
+      </div>
 
-          {activeTab === 'contributions' && canViewContributions && (
-            <div className="space-y-4">
-              <p className="text-xs text-gray-500">
-                Handbook Section 10 · factual record, no scores, no ranking. Visible to{' '}
-                {isOwnProfile ? 'you' : 'admins and the founder'}.
-              </p>
-              {contribLoading || !contributions ? (
-                <Loader />
-              ) : (
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <ContribPanel label="Posts raised"          items={contributions.raised}   count={contributions.counts.raised}   emptyLabel="No posts raised in this window." />
-                  <ContribPanel label="Posts helped resolve"  items={contributions.resolved} count={contributions.counts.resolved} emptyLabel="No resolutions credited in this window." />
-                  <ContribPanel label="Questions answered"    items={contributions.answered} count={contributions.counts.answered} emptyLabel="No answers credited in this window." />
+      {/* Recent posts */}
+      <h3 className="font-heading text-[18px] text-ink mb-3.5">Recent posts</h3>
+      {posts.length === 0 ? (
+        <div className="bg-white rounded-[14px] p-8 text-center text-ink-faint" style={{ border: '1px dashed #d9d2e6' }}>
+          No posts yet.
+        </div>
+      ) : (
+        <div className="flex flex-col gap-2.5">
+          {[...posts]
+            .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+            .slice(0, 12)
+            .map((p) => {
+              const sm = STATUS_META[p.status] ?? { label: p.status, color: '#737373', bg: '#eee' };
+              return (
+                <div
+                  key={p.id}
+                  onClick={() => navigate(`/post/${p.id}`)}
+                  className="bg-white rounded-xl px-4 py-3.5 cursor-pointer flex items-center gap-3 transition-colors hover:border-brand-primary/40"
+                  style={{ border: '1px solid #eae5f2' }}
+                >
+                  <span className="text-[11px] font-bold px-2 py-0.5 rounded" style={{ color: sm.color, background: sm.bg }}>{sm.label}</span>
+                  <span className="flex-1 text-[14.5px] text-ink font-medium truncate">{p.title}</span>
+                  <span className="text-[12px] text-ink-whisper font-heading shrink-0">{p.postNumber}</span>
                 </div>
-              )}
-            </div>
-          )}
+              );
+            })}
         </div>
       )}
     </div>
   );
 };
-
-interface ContribPost {
-  id: number;
-  postNumber?: string;
-  title: string;
-  type: string;
-  section: string;
-  status: string;
-  resolution?: string | null;
-  updatedAt: string;
-}
-
-const ContribPanel: React.FC<{
-  label: string;
-  items: ContribPost[];
-  count: number;
-  emptyLabel: string;
-}> = ({ label, items, count, emptyLabel }) => (
-  <div className="card p-4 flex flex-col min-h-[180px]">
-    <div className="flex items-center justify-between mb-3">
-      <h3 className="text-sm font-bold text-gray-700">{label}</h3>
-      <span className="text-xs font-semibold bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">{count}</span>
-    </div>
-    {items.length === 0 ? (
-      <div className="text-xs text-gray-400 italic flex-1 flex items-center justify-center">{emptyLabel}</div>
-    ) : (
-      <ul className="space-y-2 text-sm">
-        {items.slice(0, 10).map((p) => (
-          <li key={p.id} className="border-b border-surface-border pb-2 last:border-b-0">
-            <a href={`/post/${p.id}`} className="text-gray-800 hover:text-brand-primary transition-colors line-clamp-1 font-medium">
-              {p.title}
-            </a>
-            <div className="text-[10px] text-gray-400 mt-0.5 flex items-center gap-1.5 flex-wrap">
-              {p.postNumber && <span className="font-mono">{p.postNumber}</span>}
-              <span>&middot;</span>
-              <span>{p.type}</span>
-              <span>&middot;</span>
-              <span>{p.section}</span>
-              {p.resolution && (
-                <>
-                  <span>&middot;</span>
-                  <span className="text-green-600 font-semibold">{p.resolution}</span>
-                </>
-              )}
-            </div>
-          </li>
-        ))}
-        {items.length > 10 && (
-          <li className="text-[11px] text-gray-400 italic pt-1">+ {items.length - 10} more</li>
-        )}
-      </ul>
-    )}
-  </div>
-);
 
 export default ProfilePage;

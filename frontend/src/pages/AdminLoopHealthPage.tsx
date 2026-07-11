@@ -1,176 +1,117 @@
 import React, { useEffect, useState } from 'react';
 import { Navigate } from 'react-router-dom';
-import { Activity, AlertTriangle, CheckCircle2, Clock, Inbox } from 'lucide-react';
 import api from '@/api/axios';
 import { useAuthStore } from '@/stores/auth.store';
-import Loader from '@/components/shared/Loader';
+import { SLA_META, SECTION_LABEL } from '@/lib/loopMeta';
 
 interface LoopHealth {
   openTotal: number;
   needResponseCount: number;
   blackHoleCount: number;
   blackHoleRate: number;
-  blackHoleRate30d: number;
   slaStatusCounts: { HEALTHY: number; AT_RISK: number; BREACHED: number };
-  avgTimeToAcknowledgeMs: number | null;
-  avgTimeToResolveMs: number | null;
-  ackSampleSize: number;
-  resolveSampleSize: number;
   perSection: Array<{ section: string; total: number; open: number; breached: number }>;
   generatedAt: string;
 }
 
-const formatDuration = (ms: number | null) => {
-  if (ms === null) return '—';
-  const hours = ms / (60 * 60 * 1000);
-  if (hours < 24) return `${hours.toFixed(1)}h`;
-  const days = hours / 24;
-  return `${days.toFixed(1)}d`;
-};
-
-const StatCard: React.FC<{
-  label: string;
-  value: string;
-  hint?: string;
-  icon: React.ComponentType<any>;
-  tone?: 'default' | 'warn' | 'bad' | 'ok';
-}> = ({ label, value, hint, icon: Icon, tone = 'default' }) => {
-  const toneClasses: Record<string, string> = {
-    default: 'bg-white',
-    ok:      'bg-green-50 border-green-200',
-    warn:    'bg-amber-50 border-amber-200',
-    bad:     'bg-red-50 border-red-200',
-  };
-  const iconTone: Record<string, string> = {
-    default: 'text-brand-primary',
-    ok:      'text-green-600',
-    warn:    'text-amber-600',
-    bad:     'text-red-600',
-  };
-  return (
-    <div className={`card p-5 ${toneClasses[tone]}`}>
-      <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-gray-500 mb-2">
-        <Icon size={14} />
-        <span className={iconTone[tone]}>{label}</span>
-      </div>
-      <div className="text-3xl font-bold text-gray-900">{value}</div>
-      {hint && <div className="text-xs text-gray-500 mt-1">{hint}</div>}
-    </div>
-  );
-};
-
 const AdminLoopHealthPage: React.FC = () => {
   const { user } = useAuthStore();
   const [data, setData] = useState<LoopHealth | null>(null);
-  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-
   const isAdmin = user?.role === 'ADMIN' || user?.role === 'FOUNDER';
 
   useEffect(() => {
     if (!isAdmin) return;
     let cancelled = false;
     api.get<LoopHealth>('/admin/loop-health')
-      .then((res) => {
-        if (!cancelled) setData(res.data as unknown as LoopHealth);
-      })
-      .catch((err) => {
-        if (!cancelled) setError(err.response?.data?.message || 'Failed to load Loop health');
-      })
-      .finally(() => { if (!cancelled) setLoading(false); });
+      .then((res) => { if (!cancelled) setData(res.data as unknown as LoopHealth); })
+      .catch((err) => { if (!cancelled) setError(err.response?.data?.message || 'Failed to load Loop health'); });
     return () => { cancelled = true; };
   }, [isAdmin]);
 
-  if (!isAdmin) return <Navigate to="/dashboard" replace />;
-  if (loading) return <div className="pt-20"><Loader /></div>;
-  if (error) return (
-    <div className="card p-6 text-sm text-red-600 border border-red-200 bg-red-50">
-      {error}
-    </div>
-  );
-  if (!data) return null;
-
-  const blackHolePct = (data.blackHoleRate * 100).toFixed(1);
-  const blackHolePct30d = (data.blackHoleRate30d * 100).toFixed(1);
-  const maxSectionOpen = Math.max(1, ...data.perSection.map((s) => s.open));
+  if (!isAdmin) return <Navigate to="/feed" replace />;
 
   return (
-    <div className="max-w-5xl mx-auto space-y-6 pb-20">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-xl font-bold text-gray-900">Loop health</h2>
-          <p className="text-xs text-gray-500 mt-1">
-            Handbook C4 · black-hole rate is the health metric.
-            Generated {new Date(data.generatedAt).toLocaleString()}
-          </p>
+    <div className="al-view max-w-[1000px]">
+      <h1 className="font-heading text-[30px] text-ink mb-1">Loop Health</h1>
+      <p className="text-ink-faint m-0 mb-6 text-[15px]">System-wide flow metrics. Restricted to Admin &amp; Founder.</p>
+
+      {error && (
+        <div className="bg-white rounded-2xl p-6 text-[14px]" style={{ border: '1px solid #f9c3ad', color: '#b23c12' }}>{error}</div>
+      )}
+
+      {!data && !error && (
+        <div className="grid grid-cols-3 gap-4">
+          {[0, 1, 2].map((i) => <div key={i} className="al-skel" style={{ height: 110 }} />)}
         </div>
-      </div>
+      )}
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard
-          label="Open"
-          value={String(data.openTotal)}
-          hint={`${data.needResponseCount} need a response`}
-          icon={Inbox}
-        />
-        <StatCard
-          label="Black-hole rate"
-          value={`${blackHolePct}%`}
-          hint={`${data.blackHoleCount} open post(s) past 48h`}
-          icon={AlertTriangle}
-          tone={data.blackHoleRate > 0.1 ? 'bad' : data.blackHoleRate > 0 ? 'warn' : 'ok'}
-        />
-        <StatCard
-          label="Avg time to acknowledge"
-          value={formatDuration(data.avgTimeToAcknowledgeMs)}
-          hint={`Last ${data.ackSampleSize} acknowledged posts`}
-          icon={Clock}
-        />
-        <StatCard
-          label="Avg time to resolve"
-          value={formatDuration(data.avgTimeToResolveMs)}
-          hint={`Last ${data.resolveSampleSize} resolved (30d)`}
-          icon={CheckCircle2}
-        />
-      </div>
+      {data && (() => {
+        const bhRate = Math.round(data.blackHoleRate * 100);
+        const breached = data.slaStatusCounts.BREACHED;
+        const total = data.slaStatusCounts.HEALTHY + data.slaStatusCounts.AT_RISK + data.slaStatusCounts.BREACHED;
+        const cards = [
+          { label: 'Open posts', value: String(data.openTotal), sub: 'across all sections', color: '#8018de' },
+          { label: 'Black-hole rate', value: `${bhRate}%`, sub: `${data.blackHoleCount} open > 48h unacknowledged`, color: bhRate > 20 ? '#f15d24' : '#c79000' },
+          { label: 'Breached SLA', value: String(breached), sub: 'need immediate attention', color: breached ? '#f15d24' : '#1e8f4e' },
+        ];
+        const maxOpen = Math.max(1, ...data.perSection.map((s) => s.open));
+        const sortedSections = [...data.perSection].sort((a, b) => b.open - a.open);
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        <StatCard label="Healthy"  value={String(data.slaStatusCounts.HEALTHY)}  icon={Activity} tone="ok"   />
-        <StatCard label="At risk"  value={String(data.slaStatusCounts.AT_RISK)}  icon={Activity} tone="warn" />
-        <StatCard label="Breached" value={String(data.slaStatusCounts.BREACHED)} icon={Activity} tone="bad"  />
-      </div>
+        return (
+          <>
+            <div className="grid grid-cols-3 gap-4 mb-5">
+              {cards.map((c) => (
+                <div key={c.label} className="bg-white rounded-2xl p-5" style={{ border: '1px solid #eae5f2' }}>
+                  <div className="text-[13px] text-ink-faint font-medium">{c.label}</div>
+                  <div className="font-heading text-[34px] font-bold my-2 leading-none" style={{ color: c.color }}>{c.value}</div>
+                  <div className="text-[12.5px] text-ink-whisper">{c.sub}</div>
+                </div>
+              ))}
+            </div>
 
-      <div className="card p-6">
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-sm font-bold text-gray-900">Open posts by section</h3>
-          <span className="text-xs text-gray-500">
-            30d black-hole rate: <span className="font-semibold text-gray-700">{blackHolePct30d}%</span>
-          </span>
-        </div>
-        {data.perSection.length === 0 ? (
-          <p className="text-sm text-gray-500">No posts yet.</p>
-        ) : (
-          <ul className="space-y-2">
-            {data.perSection.map((row) => {
-              const widthPct = Math.round((row.open / maxSectionOpen) * 100);
-              return (
-                <li key={row.section} className="flex items-center gap-3">
-                  <span className="text-xs font-semibold text-gray-700 w-24 shrink-0">{row.section}</span>
-                  <div className="flex-1 bg-gray-100 rounded-full h-6 overflow-hidden relative">
-                    <div
-                      className="h-full bg-brand-primary/80 rounded-full transition-all"
-                      style={{ width: `${widthPct}%` }}
-                    />
-                    <div className="absolute inset-0 flex items-center px-2 text-[11px] font-semibold text-gray-800">
-                      {row.open} open · {row.breached} breached · {row.total} total
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* SLA status */}
+              <div className="bg-white rounded-2xl p-5" style={{ border: '1px solid #eae5f2' }}>
+                <h3 className="font-heading text-[16px] text-ink mb-4">SLA status</h3>
+                {(['HEALTHY', 'AT_RISK', 'BREACHED'] as const).map((k) => {
+                  const count = data.slaStatusCounts[k];
+                  const pct = total ? Math.round((count / total) * 100) : 0;
+                  return (
+                    <div key={k} className="mb-3.5">
+                      <div className="flex justify-between text-[13px] mb-1.5">
+                        <span className="text-ink-soft font-medium">{SLA_META[k].label}</span>
+                        <span className="text-ink-faint">{count}</span>
+                      </div>
+                      <div className="h-2 rounded" style={{ background: '#f0ecf7' }}>
+                        <div className="h-full rounded" style={{ width: `${pct}%`, background: SLA_META[k].color }} />
+                      </div>
                     </div>
-                  </div>
-                </li>
-              );
-            })}
-          </ul>
-        )}
-      </div>
+                  );
+                })}
+              </div>
+
+              {/* Open by section */}
+              <div className="bg-white rounded-2xl p-5" style={{ border: '1px solid #eae5f2' }}>
+                <h3 className="font-heading text-[16px] text-ink mb-4">Open by section</h3>
+                {sortedSections.filter((s) => s.open > 0).length === 0 ? (
+                  <p className="text-[13px] text-ink-whisper m-0">No open posts.</p>
+                ) : (
+                  sortedSections.filter((s) => s.open > 0).map((s) => (
+                    <div key={s.section} className="flex items-center gap-2.5 mb-2.5">
+                      <span className="w-[90px] text-[13px] text-ink-soft shrink-0">{SECTION_LABEL[s.section] ?? s.section}</span>
+                      <div className="flex-1 h-2 rounded" style={{ background: '#f0ecf7' }}>
+                        <div className="h-full rounded" style={{ width: `${Math.round((s.open / maxOpen) * 100)}%`, background: '#8018de' }} />
+                      </div>
+                      <span className="text-[13px] text-ink-faint w-6 text-right">{s.open}</span>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          </>
+        );
+      })()}
     </div>
   );
 };

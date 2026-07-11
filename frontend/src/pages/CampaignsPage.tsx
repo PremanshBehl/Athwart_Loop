@@ -1,9 +1,8 @@
 import React, { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
-import { Megaphone, Clock, Users } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import api from '@/api/axios';
-import Loader from '@/components/shared/Loader';
-import EmptyState from '@/components/shared/EmptyState';
+import { useAuthStore } from '@/stores/auth.store';
+import { ROLE_COLOR, initialsOf } from '@/lib/loopMeta';
 
 export interface CampaignRow {
   id: number;
@@ -20,94 +19,103 @@ export interface CampaignRow {
 }
 
 const CampaignsPage: React.FC = () => {
-  const [rows, setRows] = useState<CampaignRow[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { user } = useAuthStore();
+  const navigate = useNavigate();
+  const [rows, setRows] = useState<CampaignRow[] | null>(null);
+  const [error, setError] = useState(false);
+  const isAdmin = user?.role === 'FOUNDER' || user?.role === 'ADMIN';
 
   useEffect(() => {
     api.get('/campaigns')
       .then((res) => setRows((res.data as unknown as CampaignRow[]) ?? []))
-      .catch(() => setRows([]))
-      .finally(() => setLoading(false));
+      .catch(() => { setRows([]); setError(true); });
   }, []);
 
-  if (loading) return <div className="pt-20"><Loader /></div>;
-
-  const active = rows.filter((c) => c.status === 'ACTIVE');
-  const closed = rows.filter((c) => c.status === 'CLOSED');
+  const sorted = rows
+    ? [...rows].sort((a, b) => (a.status === b.status ? 0 : a.status === 'ACTIVE' ? -1 : 1))
+    : [];
 
   return (
-    <div className="max-w-4xl mx-auto space-y-8 pb-20">
-      <div>
-        <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
-          <Megaphone size={18} className="text-brand-primary" /> Campaigns
-        </h2>
-        <p className="text-xs text-gray-500 mt-1">
-          Handbook B8 · time-boxed, themed prompts. Post an Idea against the current campaign to help shape what ships next.
-        </p>
+    <div className="al-view max-w-[860px]">
+      <div className="flex items-end justify-between mb-5">
+        <div>
+          <h1 className="font-heading text-[30px] text-ink">Campaigns</h1>
+          <p className="text-ink-faint mt-1 m-0 text-[15px]">
+            Time-boxed themed prompts. Tag an Idea to enter — the founder picks a winner.
+          </p>
+        </div>
+        {isAdmin && (
+          <button
+            onClick={() => navigate('/admin/campaigns')}
+            className="px-4 py-2.5 rounded-[10px] text-white text-[14px] font-semibold shrink-0"
+            style={{ background: '#8018de' }}
+          >
+            New campaign
+          </button>
+        )}
       </div>
 
-      <section>
-        <h3 className="text-sm font-bold text-gray-800 mb-3">Active</h3>
-        {active.length === 0 ? (
-          <EmptyState icon="📣" title="No active campaign" description="The founder hasn't opened a themed ask yet." />
-        ) : (
-          <div className="space-y-3">
-            {active.map((c) => <CampaignCard key={c.id} c={c} />)}
-          </div>
-        )}
-      </section>
+      {rows === null && (
+        <div className="flex flex-col gap-4">
+          {[0, 1].map((i) => <div key={i} className="al-skel" style={{ height: 160 }} />)}
+        </div>
+      )}
 
-      {closed.length > 0 && (
-        <section>
-          <h3 className="text-sm font-bold text-gray-800 mb-3">Past campaigns</h3>
-          <div className="space-y-3">
-            {closed.map((c) => <CampaignCard key={c.id} c={c} />)}
-          </div>
-        </section>
+      {rows && rows.length === 0 && (
+        <div className="bg-white rounded-[14px] p-[54px] text-center" style={{ border: '1px dashed #d9d2e6' }}>
+          <h3 className="font-heading text-[20px] text-ink mb-1.5">
+            {error ? 'Couldn’t load campaigns' : 'No campaigns yet'}
+          </h3>
+          <p className="text-ink-faint m-0">
+            {error ? 'The backend didn’t respond. Try refreshing.' : 'The founder hasn’t opened a themed ask yet.'}
+          </p>
+        </div>
+      )}
+
+      {rows && rows.length > 0 && (
+        <div className="flex flex-col gap-4">
+          {sorted.map((c) => {
+            const active = c.status === 'ACTIVE';
+            const daysLeft = Math.max(0, Math.round((new Date(c.endsAt).getTime() - Date.now()) / (24 * 3600e3)));
+            const count = c._count?.posts ?? 0;
+            const creator = c.createdBy;
+            return (
+              <div
+                key={c.id}
+                onClick={() => navigate(`/campaigns/${c.id}`)}
+                className="bg-white rounded-2xl overflow-hidden cursor-pointer transition-shadow hover:shadow-md"
+                style={{ border: '1px solid #eae5f2' }}
+              >
+                <div className="h-1" style={{ background: active ? '#8018de' : '#c9c1d8' }} />
+                <div className="px-[22px] py-5">
+                  <div className="flex items-center gap-2.5 mb-2">
+                    <span className="text-[12px] font-semibold px-2.5 py-0.5 rounded-md" style={{ color: active ? '#1e8f4e' : '#737373', background: active ? '#e9f8ef' : '#f0ecf7' }}>
+                      {active ? 'Active' : 'Closed'}
+                    </span>
+                    {c.themeTag && <span className="text-[13px] font-semibold" style={{ color: '#8018de' }}>#{c.themeTag}</span>}
+                    <span className="text-[13px] text-ink-whisper ml-auto">
+                      {active ? `${daysLeft} days left` : (c.winner ? `Won · ${c.winner.postNumber}` : 'Closed')}
+                    </span>
+                  </div>
+                  <h3 className="font-heading text-[19px] text-ink mb-1.5">{c.title}</h3>
+                  <p className="text-[14.5px] text-ink-soft leading-[1.55] m-0 mb-3.5">{c.prompt}</p>
+                  <div className="flex items-center gap-2.5 text-[13px] text-ink-faint">
+                    <span className="inline-flex items-center gap-2">
+                      <span className="w-[22px] h-[22px] rounded-full text-white grid place-items-center text-[9px] font-bold" style={{ background: ROLE_COLOR[creator.role] ?? '#8018de' }}>
+                        {initialsOf(creator.name)}
+                      </span>
+                      {creator.name}
+                    </span>
+                    <span style={{ color: '#c9c1d8' }}>·</span>
+                    <span>{count} idea{count === 1 ? '' : 's'} tagged</span>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
       )}
     </div>
-  );
-};
-
-const CampaignCard: React.FC<{ c: CampaignRow }> = ({ c }) => {
-  const closingIn = Math.round((new Date(c.endsAt).getTime() - Date.now()) / (24 * 60 * 60 * 1000));
-  return (
-    <Link
-      to={`/campaigns/${c.id}`}
-      className="card p-5 block hover:shadow-md transition-shadow"
-    >
-      <div className="flex items-start justify-between gap-3 mb-2 flex-wrap">
-        <div className="min-w-0">
-          <h4 className="text-base font-bold text-gray-900">{c.title}</h4>
-          {c.themeTag && (
-            <span className="badge bg-brand-light text-brand-primary text-[10px] mt-1">#{c.themeTag}</span>
-          )}
-        </div>
-        <span className={`badge text-[10px] ${
-          c.status === 'ACTIVE' ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-gray-100 text-gray-600'
-        }`}>
-          {c.status}
-        </span>
-      </div>
-      <p className="text-sm text-gray-600 line-clamp-2">{c.prompt}</p>
-      <div className="mt-3 pt-3 border-t border-surface-border flex items-center gap-4 text-xs text-gray-500 flex-wrap">
-        <span className="flex items-center gap-1"><Users size={12} />{c._count?.posts ?? 0} ideas</span>
-        {c.status === 'ACTIVE' ? (
-          <span className="flex items-center gap-1">
-            <Clock size={12} />
-            {closingIn > 0 ? `closes in ${closingIn}d` : 'closing today'}
-          </span>
-        ) : (
-          <span className="flex items-center gap-1"><Clock size={12} />closed {new Date(c.closedAt ?? c.endsAt).toLocaleDateString()}</span>
-        )}
-        {c.winner && (
-          <span className="flex items-center gap-1 text-brand-primary font-semibold">
-            🏆 Winner: {c.winner.postNumber}
-          </span>
-        )}
-        <span className="ml-auto text-gray-400">By {c.createdBy.name}</span>
-      </div>
-    </Link>
   );
 };
 
