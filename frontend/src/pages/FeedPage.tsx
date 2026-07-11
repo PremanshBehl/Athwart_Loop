@@ -52,7 +52,9 @@ const FeedPage: React.FC = () => {
       search: search || undefined,
       type: type === 'ALL' ? undefined : type,
       section: section === 'ALL' ? undefined : section,
-      status: status === 'ALL' ? '' : status,
+      // Backend shows RESOLVED posts only when status is the literal 'ALL';
+      // any other/empty value defaults to hiding resolved.
+      status: status === 'ALL' ? 'ALL' : status,
       needResponse: needResponse || undefined,
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps

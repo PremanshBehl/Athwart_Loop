@@ -3,39 +3,15 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Menu, Plus, Search, Bell } from 'lucide-react';
 import { useNotificationStore } from '@/stores/notification.store';
 import CreatePostModal from '@/components/posts/CreatePostModal';
-import api from '@/api/axios';
 
 interface TopbarProps {
   onMenuClick?: () => void;
 }
 
-// Small badge that pings the /health endpoint every 30s so the user can tell
-// at a glance whether the API is reachable. Also updates optimistically when
-// any request in-flight fails.
-const useBackendStatus = () => {
-  const [up, setUp] = useState(true);
-  useEffect(() => {
-    let cancelled = false;
-    const ping = async () => {
-      try {
-        await api.get('/health');
-        if (!cancelled) setUp(true);
-      } catch {
-        if (!cancelled) setUp(false);
-      }
-    };
-    ping();
-    const i = setInterval(ping, 30_000);
-    return () => { cancelled = true; clearInterval(i); };
-  }, []);
-  return up;
-};
-
 const Topbar: React.FC<TopbarProps> = ({ onMenuClick }) => {
   const [modalOpen, setModalOpen] = useState(false);
   const [searchParams, setSearchParams] = useSearchParams();
   const [search, setSearch] = useState(searchParams.get('q') ?? '');
-  const backendUp = useBackendStatus();
   const { unreadCount } = useNotificationStore();
   const navigate = useNavigate();
 
@@ -78,23 +54,6 @@ const Topbar: React.FC<TopbarProps> = ({ onMenuClick }) => {
         </div>
 
         <div className="flex-1" />
-
-        {/* Backend availability chip */}
-        <div
-          title={backendUp ? 'API reachable' : 'API not responding'}
-          className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-full text-[12.5px] font-semibold"
-          style={{
-            border: `1.5px solid ${backendUp ? '#bfe8cd' : '#f9c3ad'}`,
-            background: backendUp ? '#e9f8ef' : '#fdece4',
-            color:      backendUp ? '#1e8f4e' : '#f15d24',
-          }}
-        >
-          <span
-            className="w-2 h-2 rounded-full"
-            style={{ background: backendUp ? '#1e8f4e' : '#f15d24' }}
-          />
-          {backendUp ? 'API online' : 'API offline'}
-        </div>
 
         <button
           onClick={() => navigate('/notifications')}
