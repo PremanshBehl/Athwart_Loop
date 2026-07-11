@@ -7,8 +7,9 @@ import { Post } from '@/types';
 import { validateFile, parseUploadError } from '@/lib/uploads';
 import AttachmentList from './AttachmentList';
 import toast from 'react-hot-toast';
-import { X, Paperclip, Sparkles, Edit2, Trash2, HelpCircle, AlertTriangle, Lightbulb, ExternalLink } from 'lucide-react';
+import { X, Paperclip, Sparkles, Trash2, ExternalLink } from 'lucide-react';
 import { LINKED_ENTITY_PATTERNS, isLinkedEntityFormatValid, linkedEntityHint, LinkedEntityType } from '@/lib/linkedEntity';
+import { TYPE_META, SECTIONS, SECTION_LABEL } from '@/lib/loopMeta';
 
 interface Props {
   isOpen: boolean;
@@ -16,13 +17,7 @@ interface Props {
   post?: Post | null;
 }
 
-// Handbook B3 · three types, three glyphs. "Done" definition shown as sub-copy.
-const TYPE_OPTIONS: Array<{ value: 'QUESTION' | 'PROBLEM' | 'IDEA'; label: string; icon: any; done: string }> = [
-  { value: 'QUESTION', label: 'Question', icon: HelpCircle,    done: 'answered'                    },
-  { value: 'PROBLEM',  label: 'Problem',  icon: AlertTriangle, done: 'fixed / handed to a build issue' },
-  { value: 'IDEA',     label: 'Idea',     icon: Lightbulb,     done: 'approved · parked · declined' },
-];
-const SECTIONS = ['BILLS', 'INVOICING', 'PATIENTS', 'CASES', 'PARTNERS', 'HOSPITALS', 'DOCTORS', 'WHATSAPP', 'PLATFORM', 'GENERAL'];
+const TYPE_ORDER: Array<'QUESTION' | 'PROBLEM' | 'IDEA'> = ['QUESTION', 'PROBLEM', 'IDEA'];
 
 interface ActiveCampaign { id: number; title: string; themeTag?: string | null }
 
@@ -37,6 +32,8 @@ const emptyForm = {
   campaignId: '' as '' | string,
 };
 
+const inputStyle: React.CSSProperties = { border: '1.5px solid #e2e2e2' };
+
 const CreatePostModal: React.FC<Props> = ({ isOpen, onClose, post }) => {
   const isEditMode = Boolean(post);
   const { fetchFeed, updatePost } = usePostStore();
@@ -44,130 +41,96 @@ const CreatePostModal: React.FC<Props> = ({ isOpen, onClose, post }) => {
   const [form, setForm] = useState(emptyForm);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [fieldErr, setFieldErr] = useState<{ title?: string; description?: string }>({});
   const [file, setFile] = useState<File | null>(null);
   const [existingAttachments, setExistingAttachments] = useState(post?.attachments ?? []);
   const [removedAttachmentIds, setRemovedAttachmentIds] = useState<number[]>([]);
-  
+
   const [duplicateMatch, setDuplicateMatch] = useState<any>(null);
   const [checkingDuplicate, setCheckingDuplicate] = useState(false);
   const [activeCampaigns, setActiveCampaigns] = useState<ActiveCampaign[]>([]);
 
-  // Handbook P5 · auto-tag suggestion. Non-blocking hint the human confirms.
   const [autoTag, setAutoTag] = useState<{
-    type: string | null;
-    section: string | null;
-    confidence: 'high' | 'medium' | 'low' | 'none';
-    reasoning: string | null;
+    type: string | null; section: string | null;
+    confidence: 'high' | 'medium' | 'low' | 'none'; reasoning: string | null;
   } | null>(null);
   const [autoTagChecking, setAutoTagChecking] = useState(false);
-  // Track whether the user manually changed type/section — if so we stop suggesting.
   const [userTouchedType, setUserTouchedType] = useState(false);
   const [userTouchedSection, setUserTouchedSection] = useState(false);
 
   useEffect(() => {
-    if (isEditMode || !form.title || form.title.trim().length < 10) {
-      setDuplicateMatch(null);
-      return;
-    }
-
+    if (isEditMode || !form.title || form.title.trim().length < 10) { setDuplicateMatch(null); return; }
     const timer = setTimeout(async () => {
       setCheckingDuplicate(true);
       try {
         const { data } = await api.post('/intelligence/duplicate-check', { title: form.title, body: form.description });
-        // axios interceptor already unwrapped { success, data } → data IS the payload
-        if (data?.found) {
-          setDuplicateMatch(data.match);
-        } else {
-          setDuplicateMatch(null);
-        }
-      } catch (err) {
-        setDuplicateMatch(null);
-      } finally {
-        setCheckingDuplicate(false);
-      }
+        setDuplicateMatch(data?.found ? data.match : null);
+      } catch { setDuplicateMatch(null); }
+      finally { setCheckingDuplicate(false); }
     }, 700);
-
     return () => clearTimeout(timer);
   }, [form.title, form.description, isEditMode]);
 
   useEffect(() => {
     if (isOpen && post) {
       setForm({
-        title: post.title,
-        description: post.description,
-        type: post.type,
-        section: post.section,
-        isUseCase: post.isUseCase,
-        linkedEntityType: (post.linkedEntityType as any) || '',
-        linkedEntityId: post.linkedEntityId || '',
-        campaignId: post.campaignId ? String(post.campaignId) : '',
+        title: post.title, description: post.description, type: post.type, section: post.section,
+        isUseCase: post.isUseCase, linkedEntityType: (post.linkedEntityType as any) || '',
+        linkedEntityId: post.linkedEntityId || '', campaignId: post.campaignId ? String(post.campaignId) : '',
       });
       setExistingAttachments(post.attachments ?? []);
-      setRemovedAttachmentIds([]);
-      setFile(null);
-      setError('');
+      setRemovedAttachmentIds([]); setFile(null); setError(''); setFieldErr({});
     } else if (isOpen && !post) {
-      setForm(emptyForm);
-      setExistingAttachments([]);
-      setRemovedAttachmentIds([]);
-      setFile(null);
-      setError('');
+      setForm(emptyForm); setExistingAttachments([]); setRemovedAttachmentIds([]);
+      setFile(null); setError(''); setFieldErr({});
     }
   }, [isOpen, post]);
 
   useEffect(() => {
     if (!isOpen || isEditMode) return;
     api.get('/campaigns', { params: { status: 'ACTIVE' } })
-      .then((res) => {
-        const list = (res.data as unknown as ActiveCampaign[]) ?? [];
-        setActiveCampaigns(list);
-      })
+      .then((res) => setActiveCampaigns((res.data as unknown as ActiveCampaign[]) ?? []))
       .catch(() => setActiveCampaigns([]));
   }, [isOpen, isEditMode]);
 
-  // Handbook P5 · debounced auto-tag classifier. Runs once the draft has
-  // enough substance; suggestion is never applied automatically.
   useEffect(() => {
     if (isEditMode) return;
     const titleTrim = form.title.trim();
-    if (titleTrim.length < 10 || (userTouchedType && userTouchedSection)) {
-      return;
-    }
+    if (titleTrim.length < 10 || (userTouchedType && userTouchedSection)) return;
     const timer = setTimeout(async () => {
       setAutoTagChecking(true);
       try {
-        const { data } = await api.post('/intelligence/classify', {
-          title: form.title,
-          body:  form.description,
-        });
+        const { data } = await api.post('/intelligence/classify', { title: form.title, body: form.description });
         setAutoTag(data ?? null);
-      } catch {
-        setAutoTag(null);
-      } finally {
-        setAutoTagChecking(false);
-      }
+      } catch { setAutoTag(null); }
+      finally { setAutoTagChecking(false); }
     }, 1200);
     return () => clearTimeout(timer);
   }, [form.title, form.description, isEditMode, userTouchedType, userTouchedSection]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [isOpen, onClose]);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const selected = e.target.files?.[0] || null;
     if (selected) {
       const validationError = validateFile(selected);
-      if (validationError) {
-        setError(validationError);
-        e.target.value = '';
-        return;
-      }
+      if (validationError) { setError(validationError); e.target.value = ''; return; }
     }
-    setError('');
-    setFile(selected);
+    setError(''); setFile(selected);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError('');
-    setLoading(true);
+    const fe: typeof fieldErr = {};
+    if (form.title.trim().length < 3) fe.title = 'Title must be at least 3 characters';
+    if (form.description.trim().length < 1) fe.description = 'Description is required';
+    if (Object.keys(fe).length) { setFieldErr(fe); return; }
+    setFieldErr({}); setError(''); setLoading(true);
     try {
       const payload = new FormData();
       payload.append('title', form.title);
@@ -178,301 +141,235 @@ const CreatePostModal: React.FC<Props> = ({ isOpen, onClose, post }) => {
       if (form.linkedEntityType) payload.append('linkedEntityType', form.linkedEntityType);
       if (form.linkedEntityId) payload.append('linkedEntityId', form.linkedEntityId);
       if (form.campaignId) payload.append('campaignId', form.campaignId);
-
       if (file) payload.append('attachment', file);
 
       if (isEditMode && post) {
-        for (const attId of removedAttachmentIds) {
-          payload.append('removeAttachmentId', String(attId));
-        }
+        for (const attId of removedAttachmentIds) payload.append('removeAttachmentId', String(attId));
         await updatePost(post.id, payload);
+        toast.success('Post updated');
       } else {
         await api.post('/posts', payload);
         await fetchFeed();
-        toast.success('Post created successfully!');
+        toast.success('Posted to the loop');
       }
-
-      onClose();
-      setForm(emptyForm);
-      setFile(null);
-      setRemovedAttachmentIds([]);
+      onClose(); setForm(emptyForm); setFile(null); setRemovedAttachmentIds([]);
     } catch (err: any) {
       const msg = parseUploadError(err);
-      setError(msg);
-      if (!isEditMode) toast.error(msg);
-    } finally {
-      setLoading(false);
-    }
+      setError(msg); toast.error(msg);
+    } finally { setLoading(false); }
   };
 
-  const visibleAttachments = existingAttachments.filter(
-    (a) => !removedAttachmentIds.includes(a.id)
-  );
-
-  useEffect(() => {
-    if (!isOpen) return;
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [isOpen, onClose]);
+  const visibleAttachments = existingAttachments.filter((a) => !removedAttachmentIds.includes(a.id));
 
   if (!isOpen) return null;
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 bg-gray-900/40 backdrop-blur-sm"
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+      className="fixed inset-0 z-[100] flex items-start justify-center overflow-y-auto"
+      style={{ background: 'rgba(36,27,46,.45)', backdropFilter: 'blur(3px)', padding: '48px 20px' }}
     >
-      <div className="bg-white border border-surface-border rounded-2xl shadow-2xl w-full max-w-xl animate-in max-h-[90vh] flex flex-col">
-        <div className="flex items-center justify-between p-6 border-b border-surface-border shrink-0">
-          <div>
-            <h2 className="text-xl font-bold text-gray-900 tracking-wide flex items-center gap-2">
-              {isEditMode ? <><Edit2 size={20} className="text-brand-primary" /> Edit post</> : <><Sparkles size={20} className="text-brand-primary" /> New post</>}
-            </h2>
-            {!isEditMode && (
-              <p className="text-xs text-gray-500 mt-1">A half-formed thought beats one kept in your head. We respond to everything.</p>
-            )}
-          </div>
-          <button onClick={onClose} className="p-2 text-gray-400 hover:text-gray-800 hover:bg-gray-100 rounded-lg transition-colors">
-            <X size={20} />
-          </button>
+      <div className="bg-white rounded-[18px] w-full max-w-[560px]" style={{ boxShadow: '0 24px 60px rgba(36,27,46,.3)' }} onClick={(e) => e.stopPropagation()}>
+        {/* Header */}
+        <div className="px-[26px] py-[22px] flex items-center justify-between" style={{ borderBottom: '1px solid #f0ecf7' }}>
+          <h2 className="font-heading text-[22px] text-ink">{isEditMode ? 'Edit post' : 'New post'}</h2>
+          <button onClick={onClose} className="text-ink-whisper hover:text-ink text-[22px] leading-none">×</button>
         </div>
 
-        <form onSubmit={handleSubmit} className="p-6 space-y-5 overflow-y-auto">
-          {error && (
-            <div className="bg-red-50 border border-red-200 text-red-600 text-sm rounded-xl px-4 py-3 flex items-center gap-2">
-              <span className="font-bold">Error:</span> {error}
+        <div className="px-[26px] py-[22px]">
+          {/* Type picker */}
+          <div className="flex gap-2 mb-[18px]">
+            {TYPE_ORDER.map((t) => {
+              const m = TYPE_META[t];
+              const on = form.type === t;
+              return (
+                <button
+                  key={t}
+                  type="button"
+                  onClick={() => { setForm({ ...form, type: t }); setUserTouchedType(true); }}
+                  className="flex-1 py-3 px-2 rounded-xl text-center transition-colors"
+                  style={{ border: `1.5px solid ${on ? m.color : '#e8e3f0'}`, background: on ? m.bg : '#fff' }}
+                >
+                  <div className="text-[14px] font-bold" style={{ color: on ? m.color : '#5a5266' }}>{m.label}</div>
+                  <div className="text-[11.5px] mt-0.5" style={{ color: '#8a8194' }}>{m.hint}</div>
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Title */}
+          <label className="block text-[13px] font-semibold mb-1.5 flex items-center justify-between">
+            <span>Title</span>
+            {checkingDuplicate && <span className="text-[11px] text-brand-primary animate-pulse font-normal">Searching Loop…</span>}
+          </label>
+          <input
+            value={form.title}
+            onChange={(e) => setForm({ ...form, title: e.target.value })}
+            placeholder="Short, specific summary"
+            className="w-full px-3.5 py-2.5 rounded-[10px] text-[15px] focus:outline-none"
+            style={inputStyle}
+          />
+          <div className="h-[18px] text-[12px] mb-1.5" style={{ color: '#f15d24' }}>{fieldErr.title || ''}</div>
+
+          {duplicateMatch && !isEditMode && (
+            <div className="mb-3 p-3.5 rounded-xl" style={{ background: '#faf7ff', border: '1px solid #d3c4ee' }}>
+              <div className="flex items-center gap-2 text-[13px] font-bold" style={{ color: '#6a0fc0' }}>
+                <Sparkles size={15} /> This may already be answered.
+              </div>
+              <p className="text-[13px] text-ink-soft mt-1.5 leading-[1.5] m-0">
+                <span className="font-heading font-semibold" style={{ color: '#8018de' }}>{duplicateMatch.postNumber || 'Post'}</span>
+                {' — '}<span className="italic">"{duplicateMatch.title}"</span>{'. '}
+                {duplicateMatch.url && (
+                  <a href={duplicateMatch.url} target="_blank" rel="noreferrer" className="font-semibold underline inline-flex items-center gap-1" style={{ color: '#8018de' }}>
+                    Read it <ExternalLink size={12} />
+                  </a>
+                )}
+              </p>
             </div>
           )}
 
-          <div>
-            <label className="label flex items-center justify-between">
-              <span>Title — state the point, don't tease it *</span>
-              {checkingDuplicate && <span className="text-xs text-brand-primary animate-pulse">Searching Loop…</span>}
-            </label>
-            <input
-              className="input text-base py-3 bg-gray-50 focus:bg-white" required
-              placeholder="Why is bill SCCS0000000 marked not_eligible?"
-              value={form.title}
-              onChange={(e) => setForm({ ...form, title: e.target.value })}
-            />
-            {duplicateMatch && !isEditMode && (
-              <div className="mt-3 p-4 bg-brand-light/60 border border-brand-primary/30 rounded-xl flex flex-col gap-2">
-                <div className="flex items-center gap-2 text-brand-primary font-bold text-sm">
-                  <Sparkles size={16} /> This may already be answered.
+          {/* Description */}
+          <label className="block text-[13px] font-semibold mb-1.5">Description</label>
+          <div className="rounded-[10px] overflow-hidden" style={inputStyle}>
+            <MentionsInput
+              className="mentions-input w-full text-[14.5px] outline-none"
+              value={form.description}
+              onChange={(e) => setForm({ ...form, description: e.target.value })}
+              placeholder="Give context, steps, and what a good resolution looks like… use @ to mention"
+              style={{
+                control: { minHeight: 96 },
+                input: { margin: 0, padding: 12, border: 'none', outline: 'none', lineHeight: 1.5 },
+                highlighter: { padding: 12, border: 'none' },
+                suggestions: {
+                  list: { backgroundColor: '#fff', border: '1px solid #e5e7eb', borderRadius: '8px', boxShadow: '0 4px 20px rgba(0,0,0,0.1)' },
+                  item: { padding: '8px 12px', borderBottom: '1px solid #f3f4f6', color: '#1f2937' },
+                },
+              }}
+            >
+              <Mention trigger="@" data={fetchUsersForMention} displayTransform={(_id, display) => `@${display}`} style={{ backgroundColor: '#ede3ff', color: '#8018de', borderRadius: '4px', padding: '0 2px' }} />
+            </MentionsInput>
+          </div>
+          <div className="h-[18px] text-[12px] mb-1.5" style={{ color: '#f15d24' }}>{fieldErr.description || ''}</div>
+
+          {/* AI auto-tag suggestion */}
+          {!isEditMode && autoTag && autoTag.confidence !== 'none' && (autoTag.type || autoTag.section) && (() => {
+            const canApplyType = autoTag.type && !userTouchedType && autoTag.type !== form.type;
+            const canApplySection = autoTag.section && !userTouchedSection && autoTag.section !== form.section;
+            if (!canApplyType && !canApplySection) return null;
+            return (
+              <div className="mb-4 p-3 rounded-xl flex items-start gap-2.5" style={{ background: '#faf7ff', border: '1px solid #d3c4ee' }}>
+                <Sparkles size={14} className="mt-0.5 shrink-0" style={{ color: '#8018de' }} />
+                <div className="flex-1 min-w-0 text-[12px] text-ink-soft">
+                  <div className="font-semibold mb-0.5" style={{ color: '#6a0fc0' }}>
+                    Loop AI suggests
+                    {canApplyType && <> · {TYPE_META[autoTag.type!]?.label ?? autoTag.type}</>}
+                    {canApplySection && <> · {SECTION_LABEL[autoTag.section!] ?? autoTag.section}</>}
+                    <span className="ml-1 text-[10px] text-ink-whisper">({autoTag.confidence})</span>
+                  </div>
+                  {autoTag.reasoning && <div className="text-ink-faint italic">{autoTag.reasoning}</div>}
                 </div>
-                <p className="text-sm text-gray-700">
-                  <span className="font-mono font-semibold text-brand-primary">
-                    {duplicateMatch.postNumber || 'Post'}
-                  </span>
-                  {' — '}
-                  <span className="italic">"{duplicateMatch.title}"</span>
-                  {'. '}
-                  <a
-                    href={duplicateMatch.url}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="font-semibold underline hover:text-brand-primary inline-flex items-center gap-1"
-                  >
-                    Read it
-                    <ExternalLink size={12} />
-                  </a>
-                  {' '}before posting, or post anyway if your case is different.
-                </p>
-                {duplicateMatch.canonicalAnswerExcerpt && (
-                  <div className="bg-white/70 p-2 rounded-lg border border-brand-primary/20 text-xs text-gray-700">
-                    <span className="font-bold block mb-1 text-brand-primary">Canonical answer:</span>
-                    {duplicateMatch.canonicalAnswerExcerpt}
-                  </div>
-                )}
+                <button type="button" onClick={() => {
+                  setForm((f) => ({ ...f, type: canApplyType ? (autoTag.type as typeof f.type) : f.type, section: canApplySection ? (autoTag.section as typeof f.section) : f.section }));
+                  setAutoTag(null);
+                }} className="text-[11px] font-semibold shrink-0" style={{ color: '#8018de' }}>Apply</button>
+                <button type="button" onClick={() => setAutoTag(null)} className="text-[11px] text-ink-whisper hover:text-ink shrink-0">Dismiss</button>
               </div>
-            )}
-          </div>
+            );
+          })()}
+          {!isEditMode && autoTagChecking && !autoTag && (
+            <p className="text-[11px] text-ink-whisper italic mb-3 animate-pulse -mt-1">Loop AI is guessing type…</p>
+          )}
 
-          <div>
-            <label className="label">Type — tells the owner what "done" looks like</label>
-            <div className="grid grid-cols-3 gap-2">
-              {TYPE_OPTIONS.map(({ value, label, icon: Icon, done }) => {
-                const active = form.type === value;
-                return (
-                  <button
-                    type="button"
-                    key={value}
-                    onClick={() => { setForm({ ...form, type: value }); setUserTouchedType(true); }}
-                    className={`flex flex-col items-start gap-1 rounded-xl border px-3 py-2 text-left transition-colors ${
-                      active
-                        ? 'border-brand-primary bg-brand-light/60 text-brand-primary'
-                        : 'border-surface-border bg-gray-50 text-gray-700 hover:bg-gray-100'
-                    }`}
-                  >
-                    <span className="flex items-center gap-2 text-sm font-semibold">
-                      <Icon size={16} /> {label}
-                    </span>
-                    <span className="text-[11px] text-gray-500 leading-tight">Done = {done}</span>
-                  </button>
-                );
-              })}
-            </div>
-            {!isEditMode && autoTag && autoTag.confidence !== 'none' && (autoTag.type || autoTag.section) && (
-              (() => {
-                const canApplyType    = autoTag.type    && !userTouchedType    && autoTag.type    !== form.type;
-                const canApplySection = autoTag.section && !userTouchedSection && autoTag.section !== form.section;
-                if (!canApplyType && !canApplySection) return null;
-                return (
-                  <div className="mt-3 p-3 rounded-xl bg-brand-light/60 border border-brand-primary/25 flex items-start gap-3">
-                    <Sparkles size={14} className="text-brand-primary mt-0.5 shrink-0" />
-                    <div className="flex-1 min-w-0 text-xs text-gray-700">
-                      <div className="text-brand-primary font-semibold mb-0.5">
-                        Loop AI suggests
-                        {canApplyType && <> · <span className="font-mono">{autoTag.type}</span></>}
-                        {canApplySection && <> · <span className="font-mono">{autoTag.section}</span></>}
-                        <span className="ml-1 text-[10px] text-gray-500">({autoTag.confidence})</span>
-                      </div>
-                      {autoTag.reasoning && <div className="text-gray-600 italic">{autoTag.reasoning}</div>}
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setForm((f) => ({
-                          ...f,
-                          type:    canApplyType    ? (autoTag.type    as typeof f.type)    : f.type,
-                          section: canApplySection ? (autoTag.section as typeof f.section) : f.section,
-                        }));
-                        setAutoTag(null);
-                      }}
-                      className="text-[11px] font-semibold text-brand-primary hover:underline shrink-0"
-                    >
-                      Apply
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setAutoTag(null)}
-                      className="text-[11px] text-gray-400 hover:text-gray-700 shrink-0"
-                    >
-                      Dismiss
-                    </button>
-                  </div>
-                );
-              })()
-            )}
-            {!isEditMode && autoTagChecking && !autoTag && (
-              <p className="text-[11px] text-gray-400 italic mt-2 animate-pulse">Loop AI is guessing type…</p>
-            )}
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="label">Section</label>
-              <select className="input bg-gray-50 focus:bg-white" value={form.section}
-                onChange={(e) => { setForm({ ...form, section: e.target.value }); setUserTouchedSection(true); }}>
-                {SECTIONS.map((p) => (
-                  <option key={p} value={p}>{p}</option>
-                ))}
+          {/* Section + use-case */}
+          <div className="flex gap-3.5 mb-4">
+            <div className="flex-1">
+              <label className="block text-[13px] font-semibold mb-1.5">Section</label>
+              <select
+                value={form.section}
+                onChange={(e) => { setForm({ ...form, section: e.target.value }); setUserTouchedSection(true); }}
+                className="w-full px-3 py-2.5 rounded-[10px] text-[14px] bg-white focus:outline-none"
+                style={inputStyle}
+              >
+                {SECTIONS.map((s) => <option key={s} value={s}>{SECTION_LABEL[s]}</option>)}
               </select>
             </div>
-            <div>
-              <label className="label">Link a CRM record (optional)</label>
-              <select className="input bg-gray-50 focus:bg-white" value={form.linkedEntityType}
-                onChange={(e) => setForm({ ...form, linkedEntityType: e.target.value as any })}>
+            <div className="flex-1 flex items-end">
+              <label className="flex items-center gap-2.5 text-[14px] text-ink-soft cursor-pointer pb-2.5">
+                <input
+                  type="checkbox"
+                  checked={form.isUseCase}
+                  onChange={(e) => setForm({ ...form, isUseCase: e.target.checked })}
+                  style={{ width: 17, height: 17, accentColor: '#8018de' }}
+                />
+                Mark as use case
+              </label>
+            </div>
+          </div>
+
+          {/* CRM link (optional) */}
+          <div className="flex gap-3.5 mb-4">
+            <div className="flex-1">
+              <label className="block text-[13px] font-semibold mb-1.5">Link a CRM record <span className="text-ink-whisper font-normal">(optional)</span></label>
+              <select
+                value={form.linkedEntityType}
+                onChange={(e) => setForm({ ...form, linkedEntityType: e.target.value as any })}
+                className="w-full px-3 py-2.5 rounded-[10px] text-[14px] bg-white focus:outline-none"
+                style={inputStyle}
+              >
                 <option value="">None</option>
                 <option value="BILL">Bill</option>
                 <option value="CASE">Case</option>
                 <option value="PARTNER">Partner</option>
               </select>
             </div>
+            {form.linkedEntityType && (
+              <div className="flex-1">
+                <label className="block text-[13px] font-semibold mb-1.5">Record ID</label>
+                <input
+                  value={form.linkedEntityId}
+                  onChange={(e) => setForm({ ...form, linkedEntityId: e.target.value })}
+                  placeholder={LINKED_ENTITY_PATTERNS[form.linkedEntityType as LinkedEntityType]?.example || 'Enter record ID…'}
+                  className="w-full px-3 py-2.5 rounded-[10px] text-[14px] focus:outline-none"
+                  style={inputStyle}
+                />
+              </div>
+            )}
           </div>
-
-          {form.linkedEntityType && (
-            <div>
-              <label className="label">
-                Record ID <span className="text-gray-400 font-normal">{linkedEntityHint(form.linkedEntityType as LinkedEntityType) ?? ''}</span>
-              </label>
-              <input
-                className="input bg-gray-50 focus:bg-white"
-                placeholder={LINKED_ENTITY_PATTERNS[form.linkedEntityType as LinkedEntityType]?.example || 'Enter record ID…'}
-                value={form.linkedEntityId}
-                onChange={(e) => setForm({ ...form, linkedEntityId: e.target.value })}
-              />
-              {form.linkedEntityId && !isLinkedEntityFormatValid(form.linkedEntityType as LinkedEntityType, form.linkedEntityId) && (
-                <p className="mt-2 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
-                  This doesn't look like a standard {form.linkedEntityType.toLowerCase()} ID (expected {linkedEntityHint(form.linkedEntityType as LinkedEntityType)}). You can still post — the ref will be flagged, not blocked.
-                </p>
-              )}
-            </div>
+          {form.linkedEntityType && form.linkedEntityId && !isLinkedEntityFormatValid(form.linkedEntityType as LinkedEntityType, form.linkedEntityId) && (
+            <p className="text-[12px] rounded-lg px-3 py-2 mb-4" style={{ background: '#fff6df', color: '#8a6d1a', border: '1px solid #f4d78a' }}>
+              This doesn't look like a standard {form.linkedEntityType.toLowerCase()} ID ({linkedEntityHint(form.linkedEntityType as LinkedEntityType)}). You can still post.
+            </p>
           )}
 
-          <div>
-            <label className="label">Description *</label>
-            <div className="border border-surface-border rounded-xl focus-within:ring-2 focus-within:ring-brand-primary/50 focus-within:border-brand-primary overflow-hidden bg-white transition-all shadow-sm">
-              <MentionsInput
-                className="mentions-input min-h-[120px] w-full p-4 text-gray-900 outline-none"
-                value={form.description}
-                onChange={(e) => setForm({ ...form, description: e.target.value })}
-                placeholder="Describe the issue, idea, or problem… Use @name to mention someone."
-                style={{
-                  control: { minHeight: 120 },
-                  input: { margin: 0, padding: 16, border: 'none', outline: 'none' },
-                  suggestions: {
-                    list: { backgroundColor: '#ffffff', border: '1px solid #e5e7eb', borderRadius: '8px', boxShadow: '0 4px 20px rgba(0,0,0,0.1)' },
-                    item: { padding: '8px 12px', borderBottom: '1px solid #f3f4f6', color: '#1f2937' },
-                  },
-                }}
-              >
-                <Mention
-                  trigger="@"
-                  data={fetchUsersForMention}
-                  displayTransform={(_id, display) => `@${display}`}
-                  style={{ backgroundColor: '#ede3ff', color: '#8018de', borderRadius: '4px', padding: '0 2px' }}
-                />
-              </MentionsInput>
-            </div>
-          </div>
-
+          {/* Campaign tag (Ideas only) */}
           {form.type === 'IDEA' && !isEditMode && activeCampaigns.length > 0 && (
-            <div>
-              <label className="label flex items-center gap-2">
-                <Sparkles size={14} className="text-brand-primary" /> Tag to a campaign (optional)
+            <div className="mb-4">
+              <label className="block text-[13px] font-semibold mb-1.5 flex items-center gap-1.5">
+                <Sparkles size={13} style={{ color: '#8018de' }} /> Tag to a campaign <span className="text-ink-whisper font-normal">(optional)</span>
               </label>
               <select
-                className="input bg-gray-50 focus:bg-white"
                 value={form.campaignId}
                 onChange={(e) => setForm({ ...form, campaignId: e.target.value })}
+                className="w-full px-3 py-2.5 rounded-[10px] text-[14px] bg-white focus:outline-none"
+                style={inputStyle}
               >
                 <option value="">None — post outside any campaign</option>
                 {activeCampaigns.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.title}{c.themeTag ? `  ·  #${c.themeTag}` : ''}
-                  </option>
+                  <option key={c.id} value={c.id}>{c.title}{c.themeTag ? `  ·  #${c.themeTag}` : ''}</option>
                 ))}
               </select>
-              <p className="text-xs text-gray-500 mt-1">
-                Handbook B8 · campaign-tagged ideas are surfaced together and voted on.
-              </p>
             </div>
           )}
 
-          <label className="flex items-center gap-3 p-4 border border-surface-border rounded-xl bg-gray-50 cursor-pointer hover:bg-gray-100 transition-colors">
-            <input
-              type="checkbox"
-              checked={form.isUseCase}
-              onChange={(e) => setForm({ ...form, isUseCase: e.target.checked })}
-              className="w-4 h-4 text-brand-primary bg-white border-gray-300 rounded focus:ring-brand-primary/50 focus:ring-2"
-            />
-            <span className="text-sm font-medium text-gray-700">Flag as Reusable Use-Case / Document</span>
-          </label>
-
+          {/* Attachments */}
           {visibleAttachments.length > 0 && (
-            <div>
-              <label className="label">Current Attachments</label>
-              <div className="space-y-2">
+            <div className="mb-4">
+              <label className="block text-[13px] font-semibold mb-1.5">Current attachments</label>
+              <div className="flex flex-col gap-2">
                 {visibleAttachments.map((att) => (
-                  <div key={att.id} className="flex items-center justify-between gap-2 px-3 py-2 rounded-xl border border-surface-border bg-gray-50">
+                  <div key={att.id} className="flex items-center justify-between gap-2 px-3 py-2 rounded-xl" style={{ background: '#f8f6fc', border: '1px solid #eae5f2' }}>
                     <AttachmentList attachments={[att]} compact />
-                    <button
-                      type="button"
-                      onClick={() => setRemovedAttachmentIds((prev) => [...prev, att.id])}
-                      className="p-1 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors shrink-0"
-                    >
+                    <button type="button" onClick={() => setRemovedAttachmentIds((prev) => [...prev, att.id])} className="p-1 text-ink-whisper hover:text-[#f15d24] shrink-0">
                       <Trash2 size={16} />
                     </button>
                   </div>
@@ -481,44 +378,38 @@ const CreatePostModal: React.FC<Props> = ({ isOpen, onClose, post }) => {
             </div>
           )}
 
-          <div>
-            <label className="label flex items-center gap-2">
-              <Paperclip size={14} className="text-gray-500" />
-              {isEditMode ? 'Add File (Optional)' : 'Attach File (Optional)'}
-            </label>
+          <div className="mb-2">
             <div className="relative">
-              <input
-                type="file"
-                accept=".jpg,.jpeg,.png,.webp,.pdf,.txt,.doc,.docx"
-                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                onChange={handleFileChange}
-              />
-              <div className="flex items-center justify-center gap-2 px-4 py-8 border-2 border-dashed border-gray-300 hover:border-brand-primary/50 rounded-xl bg-gray-50 hover:bg-brand-light/50 transition-all text-gray-500">
-                <Paperclip size={20} />
-                <span className="text-sm font-medium">Click or drag file to attach</span>
+              <input type="file" accept=".jpg,.jpeg,.png,.webp,.pdf,.txt,.doc,.docx" className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" onChange={handleFileChange} />
+              <div className="flex items-center justify-center gap-2 px-4 py-5 rounded-xl text-ink-faint" style={{ border: '2px dashed #d9d2e6', background: '#faf8fd' }}>
+                <Paperclip size={18} />
+                <span className="text-[13.5px] font-medium">{isEditMode ? 'Add a file' : 'Attach a file'} (optional)</span>
               </div>
             </div>
-            
             {file && (
-              <div className="mt-3 flex items-center gap-3 text-sm text-brand-primary bg-brand-light/50 border border-brand-primary/20 px-4 py-3 rounded-xl">
-                <span className="text-brand-primary"><Paperclip size={16} /></span>
+              <div className="mt-2.5 flex items-center gap-3 text-[13px] px-3.5 py-2.5 rounded-xl" style={{ background: '#faf7ff', border: '1px solid #d3c4ee', color: '#6a0fc0' }}>
+                <Paperclip size={15} />
                 <span className="truncate flex-1 font-medium">{file.name}</span>
-                <span className="text-xs text-brand-primary font-semibold bg-white/50 px-2 py-0.5 rounded-md">{(file.size / 1024).toFixed(1)} KB</span>
-                <button type="button" onClick={() => setFile(null)} className="p-1 hover:bg-red-100 hover:text-red-600 rounded-md transition-colors"><X size={14} /></button>
+                <span className="text-[11px] font-semibold">{(file.size / 1024).toFixed(1)} KB</span>
+                <button type="button" onClick={() => setFile(null)} className="hover:text-[#f15d24]"><X size={14} /></button>
               </div>
-            )}
-            {loading && file && (
-              <p className="text-xs text-brand-primary mt-2 font-medium animate-pulse">Uploading attachment…</p>
             )}
           </div>
 
-          <div className="flex justify-end gap-3 pt-4 border-t border-surface-border">
-            <button type="button" onClick={onClose} className="btn-ghost px-6">Cancel</button>
-            <button type="submit" disabled={loading} className="btn-primary px-8">
-              {loading ? (isEditMode ? 'Saving…' : 'Posting…') : (isEditMode ? 'Save Changes' : 'Post to Loop')}
-            </button>
-          </div>
-        </form>
+          {error && (
+            <div className="rounded-[10px] px-3.5 py-2.5 text-[13.5px] mt-2" style={{ background: '#fff0eb', border: '1px solid #f9c3ad', color: '#b23c12' }}>
+              {error}
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="px-[26px] py-4 flex justify-end gap-2.5" style={{ borderTop: '1px solid #f0ecf7' }}>
+          <button type="button" onClick={onClose} className="px-4.5 px-5 py-2.5 rounded-[10px] font-semibold text-[14px] bg-white text-ink-muted" style={inputStyle}>Cancel</button>
+          <button type="button" onClick={handleSubmit} disabled={loading} className="px-5 py-2.5 rounded-[10px] font-semibold text-[14px] text-white disabled:opacity-60" style={{ background: '#8018de' }}>
+            {loading ? (isEditMode ? 'Saving…' : 'Posting…') : (isEditMode ? 'Save changes' : 'Post to the loop')}
+          </button>
+        </div>
       </div>
     </div>
   );

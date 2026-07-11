@@ -1,175 +1,170 @@
 import React, { useEffect, useState } from 'react';
-import { X, ExternalLink } from 'lucide-react';
 import { PostType } from '@/types';
 import api from '@/api/axios';
 import { usePostStore } from '@/stores/post.store';
 import toast from 'react-hot-toast';
+import { RESOLUTIONS, RES_LABEL } from '@/lib/loopMeta';
 
 interface Props {
   isOpen: boolean;
   onClose: () => void;
   postId: number;
   postType: PostType;
+  isUseCase?: boolean;
 }
 
-const typeToResolutions: Record<PostType, string[]> = {
-  QUESTION: ['ANSWERED', 'PARKED', 'DECLINED'],
-  PROBLEM:  ['FIXED',    'PARKED', 'DECLINED'],
-  IDEA:     ['APPROVED', 'PARKED', 'DECLINED'],
-};
+const inputStyle: React.CSSProperties = { border: '1.5px solid #e2e2e2' };
 
-const ResolveModal: React.FC<Props> = ({ isOpen, onClose, postId, postType }) => {
+const ResolveModal: React.FC<Props> = ({ isOpen, onClose, postId, postType, isUseCase }) => {
   const [resolution, setResolution] = useState('');
   const [reason, setReason] = useState('');
-  const [buildIssueUrl, setBuildIssueUrl] = useState('');
-  const [canonicalAnswer, setCanonicalAnswer] = useState('');
+  const [buildUrl, setBuildUrl] = useState('');
+  const [answer, setAnswer] = useState('');
+  const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const { fetchPost, fetchFeed } = usePostStore();
 
   useEffect(() => {
-    if (!isOpen) {
-      setResolution('');
-      setReason('');
-      setBuildIssueUrl('');
-      setCanonicalAnswer('');
-      return;
-    }
+    if (!isOpen) { setResolution(''); setReason(''); setBuildUrl(''); setAnswer(''); setError(''); return; }
+    // Use cases can only resolve one way — preselect it.
+    setResolution(isUseCase ? 'RULE_DECIDED' : '');
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [isOpen, onClose]);
+  }, [isOpen, isUseCase, onClose]);
 
   if (!isOpen) return null;
 
-  const availableResolutions = typeToResolutions[postType] || [];
+  const problemOrIdea = postType === 'PROBLEM' || postType === 'IDEA';
   const needsReason = resolution === 'PARKED' || resolution === 'DECLINED';
-  // Handbook C6 · GitHub handoff — only relevant for Problem/Idea build outcomes.
-  const canShowBuildIssue =
-    (postType === 'PROBLEM' && resolution === 'FIXED') ||
-    (postType === 'IDEA'    && resolution === 'APPROVED');
-  // Handbook D2 · canonical answer — offered when resolving a Question as answered.
-  const canShowCanonicalAnswer = postType === 'QUESTION' && resolution === 'ANSWERED';
+  const needsBuildUrl = problemOrIdea && (resolution === 'FIXED' || resolution === 'APPROVED');
+  const isQuestion = postType === 'QUESTION';
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!resolution) {
-      toast.error('Please select a resolution');
-      return;
-    }
-    if (needsReason && !reason.trim()) {
-      toast.error('A reason is required for Parked or Declined resolutions');
-      return;
-    }
-    if (buildIssueUrl.trim()) {
-      try { new URL(buildIssueUrl.trim()); }
-      catch { toast.error('GitHub issue URL must be a valid URL'); return; }
-    }
+  const hint = isUseCase
+    ? 'This is a use case — it must resolve as “Rule decided”.'
+    : isQuestion
+      ? 'Answer the question and optionally pin a canonical answer.'
+      : 'Choose an outcome. Some outcomes need extra info.';
 
-    setLoading(true);
+  const submit = async () => {
+    // Mirror the server-side validation for instant feedback.
+    if (!resolution) { setError('Resolution is required when resolving.'); return; }
+    if (needsReason && !reason.trim()) { setError('Resolution reason is required for PARKED or DECLINED.'); return; }
+    if (isUseCase && resolution !== 'RULE_DECIDED') { setError('Use Cases must resolve with RULE_DECIDED.'); return; }
+    if (needsBuildUrl && !buildUrl.trim()) { setError('A build/handoff URL is required when resolving a Problem or Idea as FIXED or APPROVED.'); return; }
+    if (buildUrl.trim()) { try { new URL(buildUrl.trim()); } catch { setError('Build URL must be a valid URL.'); return; } }
+
+    setError(''); setLoading(true);
     try {
       await api.patch(`/posts/${postId}/status`, {
         status: 'RESOLVED',
         resolution,
         resolutionReason: reason.trim() || undefined,
-        buildIssueUrl: canShowBuildIssue && buildIssueUrl.trim() ? buildIssueUrl.trim() : undefined,
-        canonicalAnswer: canShowCanonicalAnswer && canonicalAnswer.trim() ? canonicalAnswer.trim() : undefined,
+        buildIssueUrl: needsBuildUrl && buildUrl.trim() ? buildUrl.trim() : undefined,
+        canonicalAnswer: isQuestion && answer.trim() ? answer.trim() : undefined,
       });
-      toast.success('Post resolved');
+      toast.success('Resolved · ' + (RES_LABEL[resolution] ?? resolution));
       await fetchPost(postId, true);
       await fetchFeed();
       onClose();
     } catch (err: any) {
-      toast.error(err.response?.data?.message || 'Failed to resolve post');
-    } finally {
-      setLoading(false);
-    }
+      setError(err.response?.data?.message || 'Could not reach the server. Is the backend running?');
+    } finally { setLoading(false); }
   };
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 bg-gray-900/40 backdrop-blur-sm"
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+      className="fixed inset-0 z-[100] flex items-center justify-center p-5"
+      style={{ background: 'rgba(36,27,46,.45)', backdropFilter: 'blur(3px)' }}
     >
-      <div className="bg-white border border-surface-border rounded-2xl shadow-2xl w-full max-w-md animate-in flex flex-col">
-        <div className="flex items-center justify-between p-5 border-b border-surface-border">
-          <h2 className="text-lg font-bold text-gray-900">Mark resolved</h2>
-          <button onClick={onClose} className="p-2 text-gray-400 hover:text-gray-800 hover:bg-gray-100 rounded-lg transition-colors">
-            <X size={20} />
-          </button>
+      <div className="bg-white rounded-[18px] w-full max-w-[480px]" style={{ boxShadow: '0 24px 60px rgba(36,27,46,.3)' }} onClick={(e) => e.stopPropagation()}>
+        <div className="px-[26px] py-[22px]" style={{ borderBottom: '1px solid #f0ecf7' }}>
+          <h2 className="font-heading text-[22px] text-ink">Resolve post</h2>
+          <p className="m-0 mt-1 text-[13.5px] text-ink-faint">{hint}</p>
         </div>
 
-        <form onSubmit={handleSubmit} className="p-5 space-y-4">
-          <div>
-            <label className="label">Resolution *</label>
-            <select
-              className="input bg-gray-50 focus:bg-white"
-              value={resolution}
-              onChange={(e) => setResolution(e.target.value)}
-              required
-            >
-              <option value="" disabled>Select resolution…</option>
-              {availableResolutions.map((res) => (
-                <option key={res} value={res}>{res}</option>
-              ))}
-            </select>
+        <div className="px-[26px] py-[22px]">
+          <label className="block text-[13px] font-semibold mb-2">Resolution</label>
+          <div className="grid grid-cols-2 gap-2 mb-4">
+            {RESOLUTIONS.map((r) => {
+              const on = resolution === r;
+              const dis = !!isUseCase && r !== 'RULE_DECIDED';
+              return (
+                <button
+                  key={r}
+                  type="button"
+                  disabled={dis}
+                  onClick={() => { setResolution(r); setError(''); }}
+                  className="p-2.5 rounded-[10px] text-[13.5px] font-semibold text-left transition-colors"
+                  style={{
+                    border: `1.5px solid ${on ? '#8018de' : '#e8e3f0'}`,
+                    background: on ? '#f3ecfd' : '#fff',
+                    color: on ? '#6a0fc0' : '#5a5266',
+                    opacity: dis ? 0.4 : 1,
+                    cursor: dis ? 'not-allowed' : 'pointer',
+                  }}
+                >
+                  {RES_LABEL[r]}
+                </button>
+              );
+            })}
           </div>
 
           {needsReason && (
-            <div>
-              <label className="label">Reason *</label>
+            <>
+              <label className="block text-[13px] font-semibold mb-1.5">Reason <span style={{ color: '#f15d24' }}>*</span></label>
               <textarea
-                className="input bg-gray-50 focus:bg-white min-h-[100px]"
                 value={reason}
                 onChange={(e) => setReason(e.target.value)}
-                placeholder={`Why is this ${resolution.toLowerCase()}?`}
-                required
+                placeholder="Why is this being parked / declined?"
+                rows={2}
+                className="w-full px-3.5 py-2.5 rounded-[10px] text-[14px] resize-y mb-3.5 focus:outline-none"
+                style={inputStyle}
               />
-              <p className="text-xs text-gray-500 mt-1">
-                Parked and declined always carry a one-line reason (handbook B5).
-              </p>
-            </div>
+            </>
           )}
 
-          {canShowBuildIssue && (
-            <div>
-              <label className="label flex items-center gap-2">
-                <ExternalLink size={14} /> GitHub issue URL <span className="text-gray-400 font-normal">(optional)</span>
-              </label>
+          {needsBuildUrl && (
+            <>
+              <label className="block text-[13px] font-semibold mb-1.5">Build / handoff URL <span style={{ color: '#f15d24' }}>*</span></label>
               <input
-                type="url"
-                className="input bg-gray-50 focus:bg-white"
-                placeholder="https://github.com/athwart-tech/…/issues/142"
-                value={buildIssueUrl}
-                onChange={(e) => setBuildIssueUrl(e.target.value)}
+                value={buildUrl}
+                onChange={(e) => setBuildUrl(e.target.value)}
+                placeholder="https://github.com/athwart/…/issues/42"
+                className="w-full px-3.5 py-2.5 rounded-[10px] text-[14px] mb-3.5 focus:outline-none"
+                style={inputStyle}
               />
-              <p className="text-xs text-gray-500 mt-1">
-                If the build is tracked in GitHub, paste the issue link — it will show on the resolved post.
-              </p>
-            </div>
+            </>
           )}
 
-          {canShowCanonicalAnswer && (
-            <div>
-              <label className="label">Canonical answer <span className="text-gray-400 font-normal">(optional but recommended)</span></label>
+          {isQuestion && (
+            <>
+              <label className="block text-[13px] font-semibold mb-1.5">Canonical answer <span className="text-ink-whisper font-normal">(optional)</span></label>
               <textarea
-                className="input bg-gray-50 focus:bg-white min-h-[120px]"
-                value={canonicalAnswer}
-                onChange={(e) => setCanonicalAnswer(e.target.value)}
-                placeholder="A bill is not_eligible only when…"
+                value={answer}
+                onChange={(e) => setAnswer(e.target.value)}
+                placeholder="Post the definitive answer so it's pinned to this thread…"
+                rows={2}
+                className="w-full px-3.5 py-2.5 rounded-[10px] text-[14px] resize-y mb-3.5 focus:outline-none"
+                style={inputStyle}
               />
-              <p className="text-xs text-gray-500 mt-1">
-                This becomes the pinned canonical answer at the top of the post.
-              </p>
-            </div>
+            </>
           )}
 
-          <div className="flex justify-end gap-3 pt-2">
-            <button type="button" onClick={onClose} className="btn-ghost px-5">Cancel</button>
-            <button type="submit" disabled={loading} className="btn-primary px-6 bg-green-600 hover:bg-green-700 border-green-600">
-              {loading ? 'Resolving…' : 'Mark resolved'}
-            </button>
-          </div>
-        </form>
+          {error && (
+            <div className="rounded-[10px] px-3.5 py-2.5 text-[13.5px]" style={{ background: '#fff0eb', border: '1px solid #f9c3ad', color: '#b23c12' }}>
+              {error}
+            </div>
+          )}
+        </div>
+
+        <div className="px-[26px] py-4 flex justify-end gap-2.5" style={{ borderTop: '1px solid #f0ecf7' }}>
+          <button type="button" onClick={onClose} className="px-5 py-2.5 rounded-[10px] font-semibold text-[14px] bg-white text-ink-muted" style={inputStyle}>Cancel</button>
+          <button type="button" onClick={submit} disabled={loading} className="px-5 py-2.5 rounded-[10px] font-semibold text-[14px] text-white disabled:opacity-60" style={{ background: '#2ac25d' }}>
+            {loading ? 'Resolving…' : 'Confirm resolve'}
+          </button>
+        </div>
       </div>
     </div>
   );

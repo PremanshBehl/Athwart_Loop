@@ -312,7 +312,7 @@ const PostDetailPage: React.FC = () => {
       </div>
 
       <CreatePostModal isOpen={editOpen} onClose={() => { setEditOpen(false); refresh(); }} post={post} />
-      <ResolveModal isOpen={resolveOpen} onClose={() => setResolveOpen(false)} postId={post.id} postType={post.type} />
+      <ResolveModal isOpen={resolveOpen} onClose={() => setResolveOpen(false)} postId={post.id} postType={post.type} isUseCase={post.isUseCase} />
     </div>
   );
 };
