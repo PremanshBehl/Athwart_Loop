@@ -29,6 +29,8 @@ const devDefaultOrigins = [
   'http://localhost:5173',
   'http://127.0.0.1:5173',
   'http://localhost:4173',
+  'http://localhost:5174',
+  'http://localhost:5175',
 ];
 const allowedOrigins = config.CORS_ORIGIN
   ? config.CORS_ORIGIN.split(',').map((o) => o.trim()).filter(Boolean)

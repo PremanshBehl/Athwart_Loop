@@ -3,37 +3,6 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '@/stores/auth.store';
 import AuthBrandPanel from '@/components/auth/AuthBrandPanel';
 
-// Six demo accounts seeded by backend/audit-seed.ts. Order matches the dc.html
-// grid (2×3) so the mock and the app share a mental model.
-const DEMO_ACCOUNTS: {
-  email: string;
-  name: string;
-  role: 'FOUNDER' | 'ADMIN' | 'BACKEND' | 'FRONTEND' | 'DEVOPS' | 'AI_ML';
-}[] = [
-  { email: 'audit-founder@test.local',  name: 'Founder',  role: 'FOUNDER'  },
-  { email: 'audit-admin@test.local',    name: 'Admin',    role: 'ADMIN'    },
-  { email: 'audit-frontend@test.local', name: 'Frontend', role: 'FRONTEND' },
-  { email: 'audit-backend@test.local',  name: 'Backend',  role: 'BACKEND'  },
-  { email: 'audit-devops@test.local',   name: 'DevOps',   role: 'DEVOPS'   },
-  { email: 'audit-aiml@test.local',     name: 'AI/ML',    role: 'AI_ML'    },
-];
-
-const ROLE_COLOR: Record<string, string> = {
-  ADMIN:    '#8018de',
-  FOUNDER:  '#6a0fc0',
-  FRONTEND: '#0a6dd8',
-  BACKEND:  '#1e8f4e',
-  DEVOPS:   '#f15d24',
-  AI_ML:    '#c79000',
-};
-const ROLE_LABEL: Record<string, string> = {
-  ADMIN: 'Admin', FOUNDER: 'Founder', FRONTEND: 'Frontend', BACKEND: 'Backend', DEVOPS: 'DevOps', AI_ML: 'AI / ML',
-};
-
-const DEMO_PASSWORD = 'auditpass1234';
-
-const initialsOf = (name: string) =>
-  name.split(' ').map((w) => w[0]).slice(0, 2).join('').toUpperCase();
 
 const LoginPage: React.FC = () => {
   const { login, loading } = useAuthStore();
@@ -117,36 +86,7 @@ const LoginPage: React.FC = () => {
             </Link>
           </div>
 
-          <div className="mt-8 pt-5 border-t border-gray-200">
-            <div className="text-[12px] uppercase tracking-[0.06em] text-ink-whisper font-semibold mb-3">
-              Quick demo sign-in
-            </div>
-            <div className="grid grid-cols-2 gap-2">
-              {DEMO_ACCOUNTS.map((acct) => (
-                <button
-                  key={acct.email}
-                  type="button"
-                  onClick={() => {
-                    setForm({ email: acct.email, password: DEMO_PASSWORD });
-                    attempt(acct.email, DEMO_PASSWORD);
-                  }}
-                  className="flex items-center gap-2.5 px-2.5 py-2.5 rounded-[10px] bg-white text-left transition-colors hover:bg-brand-faintest"
-                  style={{ border: '1.5px solid #e2e2e2' }}
-                >
-                  <span
-                    className="w-7 h-7 rounded-full grid place-items-center text-white text-[12px] font-bold shrink-0"
-                    style={{ background: ROLE_COLOR[acct.role] }}
-                  >
-                    {initialsOf(acct.name)}
-                  </span>
-                  <span className="overflow-hidden">
-                    <span className="block text-[13px] font-semibold text-ink leading-none">{acct.name}</span>
-                    <span className="block text-[11px] text-ink-faint mt-1">{ROLE_LABEL[acct.role]}</span>
-                  </span>
-                </button>
-              ))}
-            </div>
-          </div>
+
         </div>
       </div>
     </div>
