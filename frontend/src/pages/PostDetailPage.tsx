@@ -1,33 +1,48 @@
 import React, { useEffect, useState } from 'react';
-import { useParams, useNavigate, Link } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import { usePostStore } from '@/stores/post.store';
 import { useAuthStore } from '@/stores/auth.store';
-import Loader from '@/components/shared/Loader';
-import Avatar from '@/components/shared/Avatar';
-import StatusBadge from '@/components/posts/StatusBadge';
+import RenderMentionText from '@/components/shared/RenderMentionText';
 import CommentThread from '@/components/posts/CommentThread';
 import AISummary from '@/components/posts/AISummary';
-import RenderMentionText from '@/components/shared/RenderMentionText';
+import SimilarPosts from '@/components/posts/SimilarPosts';
 import AttachmentList from '@/components/posts/AttachmentList';
+import ActivityFeed from '@/components/posts/ActivityFeed';
 import CreatePostModal from '@/components/posts/CreatePostModal';
 import ResolveModal from '@/components/posts/ResolveModal';
-import SimilarPosts from '@/components/posts/SimilarPosts';
 import api from '@/api/axios';
 import toast from 'react-hot-toast';
-import { ArrowLeft, Edit2, Trash2, ThumbsUp, AlertTriangle, MoreVertical, BookOpen, Sparkles, CheckCircle2, ExternalLink, ArrowBigUp } from 'lucide-react';
+import {
+  ArrowLeft, ArrowRight, Check, Link2, Star, Sparkles, ArrowUp,
+} from 'lucide-react';
+import {
+  TYPE_META, STATUS_META, SLA_META, SECTION_LABEL, RES_LABEL,
+  ROLE_LABEL, ROLE_COLOR, initialsOf, avatarColor, relativeTime,
+} from '@/lib/loopMeta';
+
+const Avatar: React.FC<{ user?: { name: string; role: string; id: number } | null; size: number; text?: number }> = ({ user, size, text = 10 }) => (
+  <span
+    className="rounded-full text-white grid place-items-center font-bold shrink-0"
+    style={{
+      width: size, height: size, fontSize: text,
+      background: user ? (ROLE_COLOR[user.role] ?? avatarColor(user.role, user.id)) : '#a89fb5',
+    }}
+  >
+    {user ? initialsOf(user.name) : '—'}
+  </span>
+);
 
 const PostDetailPage: React.FC = () => {
   const { id } = useParams();
   const navigate = useNavigate();
   const { user } = useAuthStore();
-  const { current: post, loading, fetchPost, updateStatus, deletePost, reactToPost, votePost, updatePost } = usePostStore();
+  const { current: post, loading, postError, fetchPost, updateStatus, deletePost, votePost, updatePost } = usePostStore();
   const [editOpen, setEditOpen] = useState(false);
   const [resolveOpen, setResolveOpen] = useState(false);
-  const [useCaseMenuOpen, setUseCaseMenuOpen] = useState(false);
+  const [auditKey, setAuditKey] = useState(0);
   const [draftLoading, setDraftLoading] = useState(false);
   const [draftSeed, setDraftSeed] = useState<{
-    token: string;
-    text: string;
+    token: string; text: string;
     sources?: Array<{ postNumber: string | null; title: string; id: number }>;
     confidence?: 'high' | 'low' | 'none';
   } | null>(null);
@@ -36,357 +51,268 @@ const PostDetailPage: React.FC = () => {
     if (id) fetchPost(Number(id));
   }, [id, fetchPost]);
 
-  if (loading) return <div className="pt-20"><Loader /></div>;
-  if (!post) return <div className="text-center py-20 text-gray-500 font-medium">Post not found</div>;
+  if (loading) {
+    return (
+      <div className="al-view max-w-[1080px] mx-auto">
+        <div className="al-skel mb-4" style={{ height: 20, width: 160 }} />
+        <div className="al-skel" style={{ height: 320 }} />
+      </div>
+    );
+  }
+
+  if (postError || !post) {
+    return (
+      <div className="al-view max-w-[1080px] mx-auto">
+        <button onClick={() => navigate('/feed')} className="inline-flex items-center gap-1.5 text-ink-faint text-[14px] font-medium mb-4 hover:text-brand-primary">
+          <ArrowLeft size={16} /> Back to the loop
+        </button>
+        <div className="bg-white rounded-2xl p-11 text-center" style={{ border: '1px solid #f9c3ad' }}>
+          <div className="text-[34px] mb-2">⚠️</div>
+          <h3 className="font-heading text-[20px] text-ink mb-1.5">{postError || 'Post not found'}</h3>
+          <button onClick={() => id && fetchPost(Number(id))} className="mt-2 px-5 py-2.5 rounded-[10px] text-white font-semibold" style={{ background: '#8018de' }}>
+            Retry
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   const isAuthor = user?.id === post.authorId;
   const isOwner = user?.id === post.ownerId;
-  const isFounder = user?.role === 'FOUNDER' || user?.role === 'ADMIN';
-  
-  const canStartDiscussing = isOwner || isFounder;
-  const canResolve = isOwner || isFounder || (post.type === 'QUESTION' && isAuthor);
-  
-  const canEdit = isAuthor;
-  const canDelete = isAuthor || isFounder;
-  const isLocked = post.status === 'RESOLVED';
+  const isAdmin = user?.role === 'FOUNDER' || user?.role === 'ADMIN';
+  const canActAsOwner = isOwner || isAdmin;
+  const canResolve = canActAsOwner || (post.type === 'QUESTION' && isAuthor);
+  const canReopen = canActAsOwner || isAuthor;
 
+  const tm = TYPE_META[post.type] ?? { label: post.type, color: '#737373', bg: '#eee' };
+  const sm = STATUS_META[post.status] ?? { label: post.status, color: '#737373', bg: '#eee' };
+  const sla = post.workflowMetrics?.slaStatus ? SLA_META[post.workflowMetrics.slaStatus] : null;
+
+  const canonical = post.comments?.find((c) => c.isCanonical);
+  const showCanonical = canonical && post.status === 'RESOLVED';
+  const threadComments = canonical
+    ? (post.comments ?? []).filter((c) => c.id !== canonical.id)
+    : (post.comments ?? []);
+
+  const refresh = async () => { await fetchPost(post.id, true); setAuditKey((k) => k + 1); };
+
+  const advance = async () => {
+    if (post.status !== 'OPEN') return;
+    if (!canActAsOwner) { toast.error('Only the owner can start discussing this post'); return; }
+    try { await updateStatus(post.id, 'DISCUSSING'); await refresh(); toast.success('Now discussing — you acknowledged this post'); }
+    catch (e: any) { toast.error(e?.response?.data?.message || 'Transition failed'); }
+  };
+  const reopen = async () => {
+    try { await updateStatus(post.id, 'OPEN'); await refresh(); toast.success('Reopened'); }
+    catch (e: any) { toast.error(e?.response?.data?.message || 'Failed to reopen'); }
+  };
   const handleDelete = async () => {
-    if (confirm('Are you sure you want to delete this post?')) {
-      await deletePost(post.id);
-      navigate('/feed');
-    }
+    if (!confirm('Delete this post? This cannot be undone.')) return;
+    await deletePost(post.id); navigate('/feed');
   };
-
-  const handleStatusChange = async (newStatus: string) => {
-    await updateStatus(post.id, newStatus);
-    await fetchPost(post.id, true);
+  const toggleUseCase = async () => {
+    try {
+      const fd = new FormData();
+      fd.append('isUseCase', String(!post.isUseCase));
+      await updatePost(post.id, fd); await refresh();
+      toast.success(post.isUseCase ? 'Use Case flag removed' : 'Graduated to Use Case');
+    } catch (e: any) { toast.error(e?.response?.data?.message || 'Failed to update'); }
   };
-
   const generateDraft = async () => {
-    if (!post) return;
     setDraftLoading(true);
     try {
       const res = await api.post(`/intelligence/draft-response/${post.id}`);
       const payload = res.data?.data ?? res.data;
-      if (!payload || !payload.draft) {
-        toast('No relevant resolved posts found — draft manually.', { icon: '📝' });
-      } else {
-        setDraftSeed({
-          token: `${post.id}-${Date.now()}`,
-          text: payload.draft,
-          sources: payload.sources ?? [],
-          confidence: payload.confidence,
-        });
-      }
-    } catch (err: any) {
-      toast.error(err.response?.data?.message || 'Failed to generate draft');
-    } finally {
-      setDraftLoading(false);
-    }
+      if (!payload?.draft) toast('No relevant resolved posts found — draft manually.', { icon: '📝' });
+      else setDraftSeed({ token: `${post.id}-${Date.now()}`, text: payload.draft, sources: payload.sources ?? [], confidence: payload.confidence });
+    } catch (e: any) { toast.error(e?.response?.data?.message || 'Failed to generate draft'); }
+    finally { setDraftLoading(false); }
   };
 
-  const toggleUseCase = async () => {
-    try {
-      const payload = new FormData();
-      payload.append('isUseCase', String(!post.isUseCase));
-      await updatePost(post.id, payload);
-      await fetchPost(post.id, true);
-      toast.success(post.isUseCase ? 'Use Case flag removed' : 'Post graduated to Use Case');
-    } catch (e: any) {
-      toast.error(e?.response?.data?.message || 'Failed to update Use Case flag');
-    }
-  };
+  const canAdvance = post.status === 'OPEN' && canActAsOwner;
+  const canShowResolve = (post.status === 'OPEN' || post.status === 'DISCUSSING') && canResolve;
+  const canShowReopen = post.status === 'RESOLVED' && canReopen;
+  const noActions = !canAdvance && !canShowResolve && !canShowReopen;
+  const noActionsReason = post.status === 'OPEN'
+    ? 'Only the section owner can acknowledge and move this forward.'
+    : post.status === 'DISCUSSING' ? 'Waiting on the owner to resolve.' : 'This post is resolved.';
 
-  const totalReactions = post.reactions?.length ?? 0;
-
-  // Handbook D2: hoist the canonical comment into a green block above the thread.
-  const canonicalComment = post.comments?.find((c) => c.isCanonical);
-  const threadComments = canonicalComment
-    ? (post.comments ?? []).filter((c) => c.id !== canonicalComment.id)
-    : (post.comments ?? []);
+  const owner = post.owner;
+  const showManage = isAuthor || isAdmin || isOwner;
 
   return (
-    <div className="max-w-3xl mx-auto space-y-6 pb-20">
-      <button onClick={() => navigate(-1)} className="text-sm font-medium text-gray-400 hover:text-white transition-colors flex items-center gap-2">
-        <ArrowLeft size={16} /> Back
+    <div className="al-view max-w-[1080px] mx-auto">
+      <button onClick={() => navigate('/feed')} className="inline-flex items-center gap-1.5 bg-none border-none text-ink-faint text-[14px] font-medium mb-4 hover:text-brand-primary transition-colors">
+        <ArrowLeft size={16} /> Back to the loop
       </button>
 
-      <div className="card p-6 lg:p-8 animate-in">
-        <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
-          <div className="flex items-center gap-3 flex-wrap">
-            <span className="badge bg-gray-100 text-gray-600 border-gray-200">
-              {post.type?.replace('_', ' ')}
-            </span>
-            <StatusBadge status={post.status} />
-
-            {post.section && (
-              <span className="badge bg-brand-light text-brand-primary border border-brand-primary/20">
-                {post.section}
+      <div className="grid gap-[22px] items-start" style={{ gridTemplateColumns: 'minmax(0,1fr) 320px' }}>
+        {/* Main column */}
+        <div className="min-w-0">
+          <div className="bg-white rounded-2xl p-[26px]" style={{ border: '1px solid #eae5f2' }}>
+            <div className="flex items-center gap-2 mb-3 flex-wrap">
+              <span className="text-[12px] font-bold px-2.5 py-0.5 rounded-md" style={{ color: tm.color, background: tm.bg }}>{tm.label}</span>
+              <span className="text-[12px] font-semibold px-2.5 py-0.5 rounded-md inline-flex items-center gap-1.5" style={{ color: sm.color, background: sm.bg }}>
+                <span className="w-1.5 h-1.5 rounded-full" style={{ background: sm.color }} />{sm.label}
               </span>
-            )}
+              {post.isUseCase && (
+                <span className="text-[12px] font-semibold px-2.5 py-0.5 rounded-md" style={{ color: '#6a0fc0', background: '#ede3ff' }}>Use case</span>
+              )}
+              <span className="text-[12.5px] text-ink-whisper font-heading ml-auto">{post.postNumber}</span>
+            </div>
 
-            {post.linkedEntityType && post.linkedEntityId && (
-              <a
-                href={
-                  post.linkedEntityType === 'BILL' ? `${import.meta.env.VITE_CRM_BILL_BASE_URL || '#'}${post.linkedEntityId}` :
-                  post.linkedEntityType === 'CASE' ? `${import.meta.env.VITE_CRM_CASE_BASE_URL || '#'}${post.linkedEntityId}` :
-                  `${import.meta.env.VITE_CRM_PARTNER_BASE_URL || '#'}${post.linkedEntityId}`
-                }
-                target="_blank"
-                rel="noreferrer"
-                className="badge bg-indigo-50 text-indigo-700 border border-indigo-200 hover:bg-indigo-100 transition-colors flex items-center gap-1 cursor-pointer"
-              >
-                [{post.linkedEntityType}] {post.linkedEntityId} ↗
-              </a>
-            )}
+            <h1 className="font-heading text-[27px] text-ink leading-[1.25] mb-3.5">{post.title}</h1>
 
-            {post.workflowMetrics?.slaStatus === 'BREACHED' && (
-              <span className="badge bg-red-100 text-red-700 border border-red-300 animate-pulse flex items-center gap-1">
-                <AlertTriangle size={12} /> SLA BREACH
+            <div className="flex items-center gap-3.5 text-[13px] text-ink-ghost mb-5 flex-wrap">
+              <span className="inline-flex items-center gap-2">
+                <Avatar user={post.author} size={24} />
+                <b className="text-ink-muted font-semibold">{post.author?.name}</b> · {relativeTime(post.createdAt)}
               </span>
-            )}
+              <span>{SECTION_LABEL[post.section] ?? post.section}</span>
+            </div>
 
-            {post.workflowMetrics?.slaStatus === 'AT_RISK' && (
-              <span className="badge bg-orange-100 text-orange-700 border border-orange-300 flex items-center gap-1">
-                <AlertTriangle size={12} /> SLA AT RISK
-              </span>
-            )}
+            <div className="text-[15.5px] leading-[1.7] text-ink-soft whitespace-pre-wrap">
+              <RenderMentionText content={post.description} />
+            </div>
 
-            {post.isUseCase && (
-              <span className="badge bg-yellow-100 text-yellow-800 border-yellow-300 flex items-center gap-1">
-                <BookOpen size={12} /> Graduated: Use Case
-              </span>
-            )}
+            <AttachmentList attachments={post.attachments} />
 
-            {post.campaign && (
-              <Link
-                to={`/campaigns/${post.campaign.id}`}
-                className="badge bg-brand-light text-brand-primary border border-brand-primary/30 hover:bg-brand-primary/20 transition-colors flex items-center gap-1"
-              >
-                📣 {post.campaign.title}
-              </Link>
+            {post.status === 'RESOLVED' && (
+              <div className="mt-[22px] rounded-xl p-4" style={{ background: '#f0fbf4', border: '1px solid #bfe8cd' }}>
+                <div className="flex items-center gap-2 text-[13px] font-bold mb-1.5" style={{ color: '#1e8f4e' }}>
+                  <Check size={16} /> Resolved · {post.resolution ? (RES_LABEL[post.resolution] ?? post.resolution) : ''}
+                </div>
+                {post.resolutionReason && <p className="m-0 mb-2 text-[14px] text-ink-soft leading-[1.55]">{post.resolutionReason}</p>}
+                {post.buildIssueUrl && (
+                  <a href={post.buildIssueUrl} target="_blank" rel="noreferrer" className="text-[13px] font-semibold inline-flex items-center gap-1.5" style={{ color: '#8018de' }}>
+                    <Link2 size={14} /> Tracked build issue
+                  </a>
+                )}
+              </div>
             )}
           </div>
-          <div className="flex items-center gap-3">
-            {canStartDiscussing && post.status === 'OPEN' && (
-              <button
-                onClick={() => handleStatusChange('DISCUSSING')}
-                className="btn-primary text-xs py-1.5 px-4"
-              >
-                Start Discussing
-              </button>
-            )}
-            
-            {canResolve && post.status === 'DISCUSSING' && (
-              <button
-                onClick={() => setResolveOpen(true)}
-                className="btn-primary text-xs py-1.5 px-4 bg-green-600 hover:bg-green-700 border-green-600"
-              >
-                Mark Resolved
-              </button>
-            )}
 
-            {isFounder && post.status === 'RESOLVED' && (
-              <button
-                onClick={() => handleStatusChange('OPEN')}
-                className="btn-ghost text-xs py-1.5 px-4 text-gray-500"
-              >
+          {showCanonical && canonical && (
+            <div className="rounded-2xl p-5 mt-4" style={{ background: '#faf7ff', border: '1.5px solid #d3c4ee' }}>
+              <div className="flex items-center gap-2 text-[13px] font-bold mb-2" style={{ color: '#6a0fc0' }}>
+                <Star size={16} /> Canonical answer
+              </div>
+              <p className="m-0 text-[15px] leading-[1.6] text-ink-soft whitespace-pre-wrap">
+                <RenderMentionText content={canonical.content} />
+              </p>
+            </div>
+          )}
+
+          <div className="mt-[22px]">
+            <AISummary postId={post.id} initialSummary={post.workflowMetrics?.aiSummaryCache} isLocked={post.status === 'RESOLVED'} />
+          </div>
+
+          <div className="mt-[22px]"><SimilarPosts postId={post.id} /></div>
+
+          {/* Discussion */}
+          <div className="mt-[22px]">
+            <div className="flex items-center justify-between mb-3.5 gap-3 flex-wrap">
+              <h3 className="font-heading text-[18px] text-ink">
+                Discussion <span className="font-sans font-normal text-ink-whisper">· {threadComments.length}</span>
+              </h3>
+              {canActAsOwner && post.type === 'QUESTION' && post.status !== 'RESOLVED' && (
+                <button onClick={generateDraft} disabled={draftLoading}
+                  className="text-[12.5px] font-bold px-3 py-1.5 rounded-lg flex items-center gap-1.5 disabled:opacity-60"
+                  style={{ background: '#faf7ff', color: '#6a0fc0', border: '1.5px solid #d3c4ee' }}>
+                  <Sparkles size={14} /> {draftLoading ? 'Drafting…' : 'Generate draft'}
+                </button>
+              )}
+            </div>
+            <CommentThread
+              comments={threadComments}
+              postId={post.id}
+              postOwnerId={post.ownerId}
+              onRefresh={refresh}
+              isLocked={post.status === 'RESOLVED'}
+              draftSeed={draftSeed}
+            />
+          </div>
+        </div>
+
+        {/* Sidebar */}
+        <div className="flex flex-col gap-4 sticky" style={{ top: 84 }}>
+          {/* Workflow */}
+          <div className="bg-white rounded-2xl p-[18px]" style={{ border: '1px solid #eae5f2' }}>
+            <div className="text-[12px] uppercase tracking-[0.06em] text-ink-whisper font-semibold mb-3">Workflow</div>
+            {canAdvance && (
+              <button onClick={advance} className="w-full py-2.5 rounded-[10px] text-white font-semibold text-[14px] mb-2 flex items-center justify-center gap-2" style={{ background: '#8018de' }}>
+                <ArrowRight size={16} /> Start discussing
+              </button>
+            )}
+            {canShowResolve && (
+              <button onClick={() => setResolveOpen(true)} className="w-full py-2.5 rounded-[10px] text-white font-semibold text-[14px] mb-2 flex items-center justify-center gap-2" style={{ background: '#2ac25d' }}>
+                <Check size={16} /> Resolve
+              </button>
+            )}
+            {canShowReopen && (
+              <button onClick={reopen} className="w-full py-2.5 rounded-[10px] font-semibold text-[14px] bg-white" style={{ color: '#f15d24', border: '1.5px solid #f9c3ad' }}>
                 Reopen
               </button>
             )}
+            {noActions && <p className="m-0 text-[13px] text-ink-whisper leading-[1.5]">{noActionsReason}</p>}
 
-            {(isOwner || isFounder) && (
-              <div className="relative">
-                <button 
-                  onClick={() => setUseCaseMenuOpen(!useCaseMenuOpen)}
-                  className="p-1.5 text-gray-500 hover:text-brand-primary bg-gray-50 rounded-lg transition-colors"
-                >
-                  <MoreVertical size={16} />
-                </button>
-                {useCaseMenuOpen && (
-                  <>
-                    <div className="fixed inset-0 z-10" onClick={() => setUseCaseMenuOpen(false)}></div>
-                    <div className="absolute right-0 top-full mt-1 w-48 bg-white border border-surface-border rounded-xl shadow-lg z-20 py-1 overflow-hidden">
-                      <button
-                        onClick={() => { setUseCaseMenuOpen(false); toggleUseCase(); }}
-                        className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 hover:text-brand-primary transition-colors"
-                      >
-                        {post.isUseCase ? 'Remove Use Case Flag' : 'Graduate to Use Case'}
-                      </button>
-                    </div>
-                  </>
+            {showManage && (
+              <div className="mt-3 pt-3 flex flex-wrap gap-x-4 gap-y-2 text-[12.5px]" style={{ borderTop: '1px solid #f0ecf7' }}>
+                {isAuthor && (
+                  <button onClick={() => setEditOpen(true)} className="text-ink-faint hover:text-brand-primary font-medium">Edit</button>
+                )}
+                {canActAsOwner && (
+                  <button onClick={toggleUseCase} className="text-ink-faint hover:text-brand-primary font-medium">
+                    {post.isUseCase ? 'Remove use case' : 'Graduate to use case'}
+                  </button>
+                )}
+                {(isAuthor || isAdmin) && (
+                  <button onClick={handleDelete} className="font-medium" style={{ color: '#f15d24' }}>Delete</button>
                 )}
               </div>
             )}
-            {canEdit && (
-              <button onClick={() => setEditOpen(true)} className="p-1.5 text-gray-500 hover:text-brand-primary bg-gray-50 rounded-lg transition-colors">
-                <Edit2 size={16} />
-              </button>
-            )}
-            {canDelete && (!isLocked || isFounder) && (
-              <button onClick={handleDelete} className="p-1.5 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors">
-                <Trash2 size={16} />
-              </button>
-            )}
           </div>
-        </div>
 
-        <h1 className="text-2xl lg:text-3xl font-bold text-gray-900 mb-2 leading-snug">
-          {post.title}
-        </h1>
-        {post.postNumber && (
-          <p className="text-sm font-medium text-brand-primary mb-6">{post.postNumber}</p>
-        )}
-
-        <div className="prose max-w-none text-gray-700 whitespace-pre-wrap mb-6 leading-relaxed">
-          <RenderMentionText content={post.description} />
-        </div>
-
-        <AttachmentList attachments={post.attachments} />
-
-        {post.resolution && (
-          <div className="mt-8 p-4 bg-blue-500/10 border border-blue-500/20 rounded-xl">
-            <h4 className="text-sm font-semibold text-blue-400 mb-2">Resolution</h4>
-            <p className="text-sm text-gray-700 font-medium">{post.resolution}</p>
-            {post.resolutionReason && (
-              <p className="text-sm text-gray-600 mt-2 italic">{post.resolutionReason}</p>
-            )}
-            {post.buildIssueUrl && (
-              <a
-                href={post.buildIssueUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="mt-3 inline-flex items-center gap-1.5 text-sm font-semibold text-brand-primary hover:underline"
-              >
-                <ExternalLink size={14} /> → GitHub issue
-              </a>
-            )}
-          </div>
-        )}
-
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4
-                        pt-6 mt-6 border-t border-surface-border">
-          <div className="flex items-center gap-3">
-            <Link to={`/profile/${post.authorId}`} className="ring-2 ring-brand-primary/20 rounded-full p-0.5">
-              <Avatar user={post.author} size="md" />
-            </Link>
+          {/* Meta */}
+          <div className="bg-white rounded-2xl p-[18px] flex flex-col gap-3.5" style={{ border: '1px solid #eae5f2' }}>
             <div>
-              <p className="text-sm font-bold text-gray-900">
-                <Link to={`/profile/${post.authorId}`} className="hover:text-brand-primary transition-colors">{post.author?.name}</Link>
-              </p>
-              <p className="text-xs text-gray-500 font-medium">
-                Posted {new Date(post.createdAt).toLocaleString()}
-                {post.updatedAt !== post.createdAt && (
-                  <span> · Edited {new Date(post.updatedAt).toLocaleString()}</span>
-                )}
-              </p>
+              <div className="text-[12px] text-ink-whisper font-semibold mb-1.5">OWNER</div>
+              <div className="flex items-center gap-2 text-[14px] text-ink font-medium">
+                <Avatar user={owner} size={24} /> {owner ? owner.name : 'Unassigned'}
+              </div>
+            </div>
+            <div>
+              <div className="text-[12px] text-ink-whisper font-semibold mb-1.5">ASSIGNEE</div>
+              <div className="flex items-center gap-2 text-[14px] text-ink font-medium">
+                {post.assignee ? (<><Avatar user={post.assignee} size={24} /> {post.assignee.name}</>) : (<span className="text-ink-ghost">— No assignee</span>)}
+              </div>
+            </div>
+            <div className="flex gap-5">
+              <div>
+                <div className="text-[12px] text-ink-whisper font-semibold mb-1.5">SLA</div>
+                <div className="text-[14px] font-semibold" style={{ color: sla?.color ?? '#737373' }}>{sla?.label ?? '—'}</div>
+              </div>
+              <div>
+                <div className="text-[12px] text-ink-whisper font-semibold mb-1.5">VOTES</div>
+                <button
+                  onClick={() => votePost(post.id)}
+                  className="text-[14px] font-semibold text-ink inline-flex items-center gap-1 hover:text-brand-primary"
+                  title={post.hasVoted ? 'Remove your vote' : 'Vote'}
+                >
+                  <ArrowUp size={14} style={{ color: post.hasVoted ? '#8018de' : undefined }} />
+                  {post.voteCount ?? 0}
+                </button>
+              </div>
             </div>
           </div>
 
-          <div className="flex items-center gap-4">
-            {post.owner && (
-              <div className="flex items-center gap-2 bg-[#77f0ec]/10 px-3 py-1.5 rounded-lg border border-[#77f0ec]/30">
-                <span className="text-xs font-medium text-[#0a6dd8]">Owner:</span>
-                <span className="text-xs text-[#0a6dd8] font-bold">{post.owner.name}</span>
-              </div>
-            )}
-            {post.type === 'IDEA' && (
-              <button
-                onClick={() => votePost(post.id)}
-                aria-pressed={!!post.hasVoted}
-                className={`flex items-center gap-2 px-4 py-2 rounded-xl border text-sm font-bold transition-all
-                  ${post.hasVoted
-                    ? 'bg-brand-light border-brand-primary/40 text-brand-primary'
-                    : 'bg-white hover:bg-brand-light border-surface-border hover:border-brand-primary/30 text-gray-600 hover:text-brand-primary'}`}
-              >
-                <ArrowBigUp size={16} className={post.hasVoted ? 'fill-brand-primary' : ''} />
-                <span>{post.voteCount ?? 0}</span>
-              </button>
-            )}
-            <button
-              onClick={() => {
-                if (!isLocked) reactToPost(post.id, '👍');
-              }}
-              disabled={isLocked}
-              className={`flex items-center gap-2 px-4 py-2 rounded-xl border text-sm font-bold transition-all
-                ${isLocked
-                  ? 'bg-gray-50 border-surface-border text-gray-400 cursor-not-allowed'
-                  : 'bg-white hover:bg-brand-light border-surface-border hover:border-brand-primary/30 text-gray-600 hover:text-brand-primary'}`}
-            >
-              <ThumbsUp size={16} /> <span>{totalReactions}</span>
-            </button>
-          </div>
+          {/* Activity */}
+          <ActivityFeed postId={post.id} refreshKey={auditKey} />
         </div>
       </div>
 
-      <AISummary postId={post.id} initialSummary={post.workflowMetrics?.aiSummaryCache} isLocked={isLocked} />
-
-      <SimilarPosts postId={post.id} />
-
-      {canonicalComment && (
-        <div className="card p-6 lg:p-8 border-l-4 border-l-green-500 bg-green-50/40">
-          <div className="flex items-center gap-2 text-sm font-bold text-green-700 mb-3">
-            <CheckCircle2 size={16} /> Canonical answer
-            {post.owner && (
-              <span className="text-xs font-medium text-gray-500">· marked by {post.owner.name}</span>
-            )}
-          </div>
-          <div className="prose max-w-none text-gray-800 whitespace-pre-wrap leading-relaxed">
-            <RenderMentionText content={canonicalComment.content} />
-          </div>
-          <div className="mt-3 flex items-center gap-2 text-xs text-gray-500">
-            <Avatar user={canonicalComment.author} size="sm" />
-            <span className="font-semibold text-gray-700">{canonicalComment.author?.name}</span>
-            <span>· {new Date(canonicalComment.createdAt).toLocaleString()}</span>
-          </div>
-        </div>
-      )}
-
-      <div className="card p-6 lg:p-8">
-        <div className="flex items-center justify-between mb-6 gap-3 flex-wrap">
-          <h3 className="text-lg font-bold text-gray-900 flex items-center gap-3">
-            Discussion
-            <span className="bg-gray-100 text-gray-600 text-xs px-2.5 py-1 rounded-full font-bold">
-              {threadComments.length}
-            </span>
-          </h3>
-          {(isOwner || isFounder) && post.type === 'QUESTION' && (post.status === 'OPEN' || post.status === 'DISCUSSING') && (
-            <button
-              type="button"
-              onClick={generateDraft}
-              disabled={draftLoading}
-              className="text-xs font-bold px-3 py-1.5 rounded-lg border bg-purple-50 text-purple-700 border-purple-200 hover:bg-purple-100 flex items-center gap-1.5 disabled:opacity-60"
-            >
-              <Sparkles size={14} />
-              {draftLoading ? 'Drafting…' : 'Generate draft response'}
-            </button>
-          )}
-        </div>
-        <CommentThread
-          comments={threadComments}
-          postId={post.id}
-          postOwnerId={post.ownerId}
-          onRefresh={() => fetchPost(post.id, true)}
-          isLocked={isLocked}
-          draftSeed={draftSeed}
-        />
-      </div>
-
-      <CreatePostModal
-        isOpen={editOpen}
-        onClose={() => {
-          setEditOpen(false);
-          fetchPost(post.id, true);
-        }}
-        post={post}
-      />
-
-      <ResolveModal
-        isOpen={resolveOpen}
-        onClose={() => setResolveOpen(false)}
-        postId={post.id}
-        postType={post.type}
-      />
+      <CreatePostModal isOpen={editOpen} onClose={() => { setEditOpen(false); refresh(); }} post={post} />
+      <ResolveModal isOpen={resolveOpen} onClose={() => setResolveOpen(false)} postId={post.id} postType={post.type} />
     </div>
   );
 };

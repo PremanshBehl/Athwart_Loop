@@ -498,6 +498,31 @@ export const deletePost = async (req: Request, res: Response) => {
   return successResponse(res, 'Post deleted successfully');
 };
 
+/* ---------- GET POST AUDIT TRAIL ---------- */
+// Read-only activity feed for the post-detail sidebar. Returns the audit-log
+// rows for a post, newest first, with the actor's public fields.
+export const getPostAudit = async (req: Request, res: Response) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id) || id <= 0) {
+    throw new AppError('Invalid post ID', StatusCodes.BAD_REQUEST, 'INVALID_ID');
+  }
+
+  const rows = await prisma.auditLog.findMany({
+    where: { postId: id },
+    orderBy: { createdAt: 'desc' },
+    take: 50,
+    select: {
+      id: true,
+      actionType: true,
+      metadata: true,
+      createdAt: true,
+      actor: { select: { id: true, name: true, role: true, avatarUrl: true } },
+    },
+  });
+
+  return successResponse(res, 'Audit trail retrieved', rows);
+};
+
 /* ---------- GET STATS ---------- */
 export const getStats = async (req: Request, res: Response) => {
   const userId = req.user!.id;

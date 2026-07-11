@@ -55,6 +55,8 @@ export interface Post {
   authorId: number;
   owner?: User;
   ownerId?: number;
+  assignee?: User | null;
+  assigneeId?: number | null;
   departmentId?: number;
   department?: { id: number; name: string; slug: string };
   workflowMetrics?: {

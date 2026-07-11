@@ -9,6 +9,7 @@ import {
   votePost,
   deletePost,
   getPostComments,
+  getPostAudit,
   getStats,
   getSlaHealth,
 } from '../controllers/post.controller';
@@ -27,6 +28,7 @@ router.get('/sla-health', authenticate, getSlaHealth);
 router.post('/', authenticate, uploadLimiter, uploadRaw.single('attachment'), validateMagicBytes, validate(createPostSchema), createPost);
 router.get('/:id', authenticate, getPost);
 router.get('/:id/comments', authenticate, validate(getCommentsSchema), getPostComments);
+router.get('/:id/audit', authenticate, getPostAudit);
 router.patch('/:id/status', authenticate, validate(updatePostStatusSchema), updateStatus);
 router.patch('/:id', authenticate, uploadLimiter, uploadRaw.single('attachment'), validateMagicBytes, validate(updatePostSchema), updatePost);
 router.post('/:id/react', authenticate, validate(reactToPostSchema), reactToPost);
