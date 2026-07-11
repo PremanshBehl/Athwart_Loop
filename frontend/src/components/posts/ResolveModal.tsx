@@ -43,7 +43,7 @@ const ResolveModal: React.FC<Props> = ({ isOpen, onClose, postId, postType, isUs
   const hint = isUseCase
     ? 'This is a use case — it must resolve as “Rule decided”.'
     : isQuestion
-      ? 'Answer the question and optionally pin a canonical answer.'
+      ? 'Answer the question and pin a canonical answer.'
       : 'Choose an outcome. Some outcomes need extra info.';
 
   const submit = async () => {
@@ -53,6 +53,7 @@ const ResolveModal: React.FC<Props> = ({ isOpen, onClose, postId, postType, isUs
     if (isUseCase && resolution !== 'RULE_DECIDED') { setError('Use Cases must resolve with RULE_DECIDED.'); return; }
     if (needsBuildUrl && !buildUrl.trim()) { setError('A build/handoff URL is required when resolving a Problem or Idea as FIXED or APPROVED.'); return; }
     if (buildUrl.trim()) { try { new URL(buildUrl.trim()); } catch { setError('Build URL must be a valid URL.'); return; } }
+    if (isQuestion && !answer.trim()) { setError('A canonical answer is required when resolving a Question.'); return; }
 
     setError(''); setLoading(true);
     try {
@@ -152,7 +153,7 @@ const ResolveModal: React.FC<Props> = ({ isOpen, onClose, postId, postType, isUs
 
           {isQuestion && (
             <>
-              <label className="block text-[13px] font-semibold mb-1.5">Canonical answer <span className="text-ink-whisper font-normal">(optional)</span></label>
+              <label className="block text-[13px] font-semibold mb-1.5">Canonical answer <span style={{ color: '#f15d24' }}>*</span></label>
               <textarea
                 value={answer}
                 onChange={(e) => setAnswer(e.target.value)}

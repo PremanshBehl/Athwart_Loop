@@ -229,7 +229,10 @@ export const updateStatus = async (req: Request, res: Response) => {
 
     // Handbook D2: when resolving a Question with a canonical answer inline,
     // create the comment and mark it canonical so PostDetailPage can hoist it.
-    if (canonicalAnswer && status === 'RESOLVED' && currentPost.type === 'QUESTION') {
+    if (status === 'RESOLVED' && currentPost.type === 'QUESTION') {
+      if (!canonicalAnswer || !canonicalAnswer.trim()) {
+        throw new AppError('A canonical answer is required when resolving a Question.', StatusCodes.BAD_REQUEST, 'CANONICAL_ANSWER_REQUIRED');
+      }
       const created = await prisma.comment.create({
         data: { postId: id, authorId: actorId, content: canonicalAnswer, isCanonical: true },
       });
