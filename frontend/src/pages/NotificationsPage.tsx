@@ -1,4 +1,5 @@
 import React, { useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import type { LucideIcon } from 'lucide-react';
 import { AtSign, UserPlus, MessageSquare, Flag, Bell } from 'lucide-react';
 import { useNotificationStore } from '@/stores/notification.store';
@@ -11,9 +12,20 @@ const TYPE_META: Record<string, { Icon: LucideIcon; bg: string; color: string }>
   POST_UPDATE:   { Icon: Flag,          bg: '#fff6df', color: '#c79000' },
 };
 
+const getActionText = (type: string) => {
+  switch (type) {
+    case 'MENTION': return ' mentioned you in ';
+    case 'ASSIGNMENT': return ' assigned you to ';
+    case 'COMMENT_REPLY': return ' replied on ';
+    case 'POST_UPDATE': return ' updated ';
+    default: return ' interacted with ';
+  }
+};
+
 const NotificationsPage: React.FC = () => {
   const { list, fetch, markRead, markAllRead } = useNotificationStore();
   const unread = list.filter((n) => !n.read).length;
+  const navigate = useNavigate();
 
   useEffect(() => { fetch(); }, [fetch]);
 
@@ -44,7 +56,10 @@ const NotificationsPage: React.FC = () => {
             return (
               <div
                 key={n.id}
-                onClick={() => !n.read && markRead(n.id)}
+                onClick={() => {
+                  if (!n.read) markRead(n.id);
+                  if (n.postId) navigate(`/post/${n.postId}`);
+                }}
                 className="rounded-xl px-4 py-3.5 flex gap-3 items-center cursor-pointer transition-colors"
                 style={{ background: n.read ? '#fff' : '#faf7ff', border: '1px solid #eae5f2' }}
               >
@@ -52,7 +67,17 @@ const NotificationsPage: React.FC = () => {
                   <Icon size={16} />
                 </span>
                 <div className="flex-1 min-w-0">
-                  <p className="m-0 text-[14px] text-ink-soft leading-[1.4]">{n.message}</p>
+                  <p className="m-0 text-[14px] text-ink-soft leading-[1.4]">
+                    {n.actorName && n.postTitle ? (
+                      <>
+                        <span className="font-bold text-ink">{n.actorName}</span>
+                        {getActionText(n.type)}
+                        <span className="font-bold text-ink">{n.postTitle}</span>
+                      </>
+                    ) : (
+                      n.message
+                    )}
+                  </p>
                   <span className="text-[12px] text-ink-whisper">{relativeTime(n.createdAt)}</span>
                 </div>
                 {!n.read && <span className="w-[9px] h-[9px] rounded-full shrink-0" style={{ background: '#8018de' }} />}

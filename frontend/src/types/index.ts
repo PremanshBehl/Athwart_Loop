@@ -93,6 +93,9 @@ export interface Notification {
   id: number;
   type: string;
   message: string;
+  actorName?: string;
+  postTitle?: string;
+  postId?: number;
   read: boolean;
   createdAt: string;
   userId: number;
