@@ -30,6 +30,7 @@ const emptyForm = {
   linkedEntityType: '' as '' | 'BILL' | 'CASE' | 'PARTNER',
   linkedEntityId: '',
   campaignId: '' as '' | string,
+  assigneeId: '' as '' | string,
 };
 
 const inputStyle: React.CSSProperties = { border: '1.5px solid #e2e2e2' };
@@ -49,6 +50,7 @@ const CreatePostModal: React.FC<Props> = ({ isOpen, onClose, post }) => {
   const [duplicateMatches, setDuplicateMatches] = useState<any[]>([]);
   const [checkingDuplicate, setCheckingDuplicate] = useState(false);
   const [activeCampaigns, setActiveCampaigns] = useState<ActiveCampaign[]>([]);
+  const [users, setUsers] = useState<any[]>([]);
 
   const [autoTag, setAutoTag] = useState<{
     type: string | null; section: string | null;
@@ -77,6 +79,7 @@ const CreatePostModal: React.FC<Props> = ({ isOpen, onClose, post }) => {
         title: post.title, description: post.description, type: post.type, section: post.section,
         isUseCase: post.isUseCase, linkedEntityType: (post.linkedEntityType as any) || '',
         linkedEntityId: post.linkedEntityId || '', campaignId: post.campaignId ? String(post.campaignId) : '',
+        assigneeId: post.assigneeId ? String(post.assigneeId) : '',
       });
       setExistingAttachments(post.attachments ?? []);
       setRemovedAttachmentIds([]); setFile(null); setError(''); setFieldErr({});
@@ -92,6 +95,13 @@ const CreatePostModal: React.FC<Props> = ({ isOpen, onClose, post }) => {
       .then((res) => setActiveCampaigns((res.data as unknown as ActiveCampaign[]) ?? []))
       .catch(() => setActiveCampaigns([]));
   }, [isOpen, isEditMode]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    api.get('/auth/users', { params: { limit: 100 } })
+      .then((res) => setUsers((res.data as any) ?? []))
+      .catch(() => setUsers([]));
+  }, [isOpen]);
 
   useEffect(() => {
     if (isEditMode) return;
@@ -141,6 +151,7 @@ const CreatePostModal: React.FC<Props> = ({ isOpen, onClose, post }) => {
       if (form.linkedEntityType) payload.append('linkedEntityType', form.linkedEntityType);
       if (form.linkedEntityId) payload.append('linkedEntityId', form.linkedEntityId);
       if (form.campaignId) payload.append('campaignId', form.campaignId);
+      if (form.assigneeId) payload.append('assigneeId', form.assigneeId);
       if (file) payload.append('attachment', file);
 
       if (isEditMode && post) {
@@ -284,7 +295,7 @@ const CreatePostModal: React.FC<Props> = ({ isOpen, onClose, post }) => {
             <p className="text-[11px] text-ink-whisper italic mb-3 animate-pulse -mt-1">Loop AI is guessing type…</p>
           )}
 
-          {/* Section + use-case */}
+          {/* Section + Assignee + use-case */}
           <div className="flex gap-3.5 mb-4">
             <div className="flex-1">
               <label className="block text-[13px] font-semibold mb-1.5">Section</label>
@@ -295,6 +306,18 @@ const CreatePostModal: React.FC<Props> = ({ isOpen, onClose, post }) => {
                 style={inputStyle}
               >
                 {SECTIONS.map((s) => <option key={s} value={s}>{SECTION_LABEL[s]}</option>)}
+              </select>
+            </div>
+            <div className="flex-1">
+              <label className="block text-[13px] font-semibold mb-1.5">Assignee <span className="text-ink-whisper font-normal">(optional)</span></label>
+              <select
+                value={form.assigneeId}
+                onChange={(e) => setForm({ ...form, assigneeId: e.target.value })}
+                className="w-full px-3 py-2.5 rounded-[10px] text-[14px] bg-white focus:outline-none"
+                style={inputStyle}
+              >
+                <option value="">Unassigned</option>
+                {users.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
               </select>
             </div>
             <div className="flex-1 flex items-end">
