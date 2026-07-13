@@ -65,6 +65,7 @@ export class WorkflowService {
       resolution?: Resolution;
       resolutionReason?: string;
       buildIssueUrl?: string | null;
+      isAutoComment?: boolean;
     }
   ) {
     // 1. Fetch current status
@@ -96,7 +97,7 @@ export class WorkflowService {
 
     // 3. Validate Transitions
     if (currentStatus === Status.OPEN && newStatus === Status.DISCUSSING) {
-      if (!canActAsOwner) {
+      if (!canActAsOwner && !payload?.isAutoComment) {
         throw new AppError('Only the owner can start discussing this post.', StatusCodes.FORBIDDEN, 'FORBIDDEN');
       }
       if (!post.acknowledgedAt) {
@@ -172,7 +173,8 @@ export class WorkflowService {
     const shouldClaimOwner =
       currentStatus === Status.OPEN &&
       (newStatus === Status.DISCUSSING || newStatus === Status.RESOLVED) &&
-      !post.ownerId;
+      !post.ownerId &&
+      canActAsOwner;
     if (shouldClaimOwner) {
       await prisma.post.updateMany({
         where: { id: postId, ownerId: null },

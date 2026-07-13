@@ -3,8 +3,9 @@ import { StatusCodes } from 'http-status-codes';
 import prisma from '../config/db';
 import { AppError } from '../utils/AppError';
 import { successResponse } from '../utils/response.util';
-
 import { feedService } from '../services/feed.service';
+import { workflowService } from '../services/workflow.service';
+import { Status } from '@prisma/client';
 
 /* ---------- GET COMMENT REPLIES (PAGINATED) ---------- */
 export const getCommentReplies = async (req: Request, res: Response) => {
@@ -51,6 +52,11 @@ export const createComment = async (req: Request, res: Response) => {
     commentId: comment.id,
   });
 
+  const post = await prisma.post.findUnique({ where: { id: postId } });
+  if (post && post.status === Status.OPEN) {
+    await workflowService.transitionStatus(postId, Status.DISCUSSING, authorId, { isAutoComment: true }).catch(console.error);
+  }
+
   // Phase 3A: Notify parent comment author if this is a reply
   if (parentId) {
     const parent = await prisma.comment.findUnique({ where: { id: parentId } });
@@ -64,7 +70,6 @@ export const createComment = async (req: Request, res: Response) => {
     }
   } else {
     // Notify post author if this is a top-level comment
-    const post = await prisma.post.findUnique({ where: { id: postId } });
     if (post && post.authorId !== authorId) {
       await notificationService.createNotification({
         userId: post.authorId,

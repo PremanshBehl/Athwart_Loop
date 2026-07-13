@@ -96,12 +96,7 @@ const PostDetailPage: React.FC = () => {
 
   const refresh = async () => { await fetchPost(post.id, true); setAuditKey((k) => k + 1); };
 
-  const advance = async () => {
-    if (post.status !== 'OPEN') return;
-    if (!canActAsOwner) { toast.error('Only the owner can start discussing this post'); return; }
-    try { await updateStatus(post.id, 'DISCUSSING'); await refresh(); toast.success('Now discussing — you acknowledged this post'); }
-    catch (e: any) { toast.error(e?.response?.data?.message || 'Transition failed'); }
-  };
+
   const reopen = async () => {
     try { await updateStatus(post.id, 'OPEN'); await refresh(); toast.success('Reopened'); }
     catch (e: any) { toast.error(e?.response?.data?.message || 'Failed to reopen'); }
@@ -129,12 +124,11 @@ const PostDetailPage: React.FC = () => {
     finally { setDraftLoading(false); }
   };
 
-  const canAdvance = post.status === 'OPEN' && canActAsOwner;
   const canShowResolve = (post.status === 'OPEN' || post.status === 'DISCUSSING') && canResolve;
   const canShowReopen = post.status === 'RESOLVED' && canReopen;
-  const noActions = !canAdvance && !canShowResolve && !canShowReopen;
+  const noActions = !canShowResolve && !canShowReopen;
   const noActionsReason = post.status === 'OPEN'
-    ? 'Only the section owner can acknowledge and move this forward.'
+    ? 'Waiting for discussion to start.'
     : post.status === 'DISCUSSING' ? 'Waiting on the owner to resolve.' : 'This post is resolved.';
 
   const owner = post.owner;
@@ -239,11 +233,7 @@ const PostDetailPage: React.FC = () => {
           {/* Workflow */}
           <div className="bg-white rounded-2xl p-[18px]" style={{ border: '1px solid #eae5f2' }}>
             <div className="text-[12px] uppercase tracking-[0.06em] text-ink-whisper font-semibold mb-3">Workflow</div>
-            {canAdvance && (
-              <button onClick={advance} className="w-full py-2.5 rounded-[10px] text-white font-semibold text-[14px] mb-2 flex items-center justify-center gap-2" style={{ background: '#8018de' }}>
-                <ArrowRight size={16} /> Start discussing
-              </button>
-            )}
+
             {canShowResolve && (
               <button onClick={() => setResolveOpen(true)} className="w-full py-2.5 rounded-[10px] text-white font-semibold text-[14px] mb-2 flex items-center justify-center gap-2" style={{ background: '#2ac25d' }}>
                 <Check size={16} /> Resolve
