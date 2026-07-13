@@ -75,7 +75,13 @@ export const createPost = async (req: Request, res: Response) => {
             filename: attachmentData.filename,
             mimeType: req.file!.mimetype,
           }]
-        } : undefined
+        } : undefined,
+        workflowMetrics: {
+          create: {
+            currentStatusStartedAt: new Date(),
+            slaStatus: 'HEALTHY'
+          }
+        }
       },
       include: { author: { select: { id: true, name: true, role: true, avatarUrl: true } }, attachments: true },
     });
