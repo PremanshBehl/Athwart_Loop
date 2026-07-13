@@ -25,11 +25,7 @@ const AuthBrandPanel: React.FC = () => (
       </p>
     </div>
 
-    <div className="relative z-10 flex gap-7 text-[13px] tracking-[0.04em] uppercase text-[#d9bffb]">
-      <span>Workflows</span>
-      <span>SLA tracking</span>
-      <span>AI catch-up</span>
-    </div>
+
 
     {/* Decorative radial glow bottom-right */}
     <div
