@@ -79,10 +79,19 @@ const PostDetailPage: React.FC = () => {
 
   const isAuthor = user?.id === post.authorId;
   const isOwner = user?.id === post.ownerId;
+  const isAssignee = user?.id === post.assigneeId;
   const isAdmin = user?.role === 'FOUNDER' || user?.role === 'ADMIN';
+  const isFounder = user?.role === 'FOUNDER';
   const canActAsOwner = isOwner || isAdmin;
-  const canResolve = canActAsOwner || (post.type === 'QUESTION' && isAuthor);
-  const canReopen = canActAsOwner || isAuthor;
+
+  let canResolve = false;
+  if (post.type === 'QUESTION') canResolve = isAuthor || isAssignee || isAdmin;
+  else if (post.type === 'PROBLEM') canResolve = isAssignee || isOwner || isAdmin;
+  else if (post.type === 'IDEA') canResolve = isFounder || isAdmin;
+  else if (post.type === 'USE_CASE') canResolve = canActAsOwner;
+
+  const canReopen = canActAsOwner || isAssignee || isAuthor;
+  const showDisabledIdeaResolve = post.type === 'IDEA' && !canResolve;
 
   const tm = TYPE_META[post.type] ?? { label: post.type, color: '#737373', bg: '#eee' };
   const sm = STATUS_META[post.status] ?? { label: post.status, color: '#737373', bg: '#eee' };
@@ -124,7 +133,7 @@ const PostDetailPage: React.FC = () => {
     finally { setDraftLoading(false); }
   };
 
-  const canShowResolve = (post.status === 'OPEN' || post.status === 'DISCUSSING') && canResolve;
+  const canShowResolve = (post.status === 'OPEN' || post.status === 'DISCUSSING') && (canResolve || showDisabledIdeaResolve);
   const canShowReopen = post.status === 'RESOLVED' && canReopen;
   const noActions = !canShowResolve && !canShowReopen;
   const noActionsReason = post.status === 'OPEN'
@@ -235,9 +244,21 @@ const PostDetailPage: React.FC = () => {
             <div className="text-[12px] uppercase tracking-[0.06em] text-ink-whisper font-semibold mb-3">Workflow</div>
 
             {canShowResolve && (
-              <button onClick={() => setResolveOpen(true)} className="w-full py-2.5 rounded-[10px] text-white font-semibold text-[14px] mb-2 flex items-center justify-center gap-2" style={{ background: '#2ac25d' }}>
-                <Check size={16} /> Resolve
-              </button>
+              <div className="relative group">
+                <button
+                  onClick={() => canResolve && setResolveOpen(true)}
+                  disabled={!canResolve}
+                  className="w-full py-2.5 rounded-[10px] text-white font-semibold text-[14px] mb-2 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                  style={{ background: canResolve ? '#2ac25d' : '#9ca3af' }}
+                >
+                  <Check size={16} /> Resolve
+                </button>
+                {showDisabledIdeaResolve && (
+                  <div className="absolute left-1/2 -top-8 -translate-x-1/2 px-2 py-1 bg-ink text-white text-xs rounded opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity whitespace-nowrap z-10">
+                    Only the Founder can resolve Ideas
+                  </div>
+                )}
+              </div>
             )}
             {canShowReopen && (
               <button onClick={reopen} className="w-full py-2.5 rounded-[10px] font-semibold text-[14px] bg-white" style={{ color: '#f15d24', border: '1.5px solid #f9c3ad' }}>
@@ -294,6 +315,25 @@ const PostDetailPage: React.FC = () => {
                 </button>
               </div>
             </div>
+            
+            {(post.assignee || post.type !== 'IDEA') && (
+              <div>
+                <div className="text-[12px] text-ink-whisper font-semibold mb-1.5 flex items-center justify-between">
+                  <span>ASSIGNEE</span>
+                  {(isAuthor || isAdmin) && (post.status === 'OPEN' || post.status === 'DISCUSSING') && (
+                    <button onClick={() => setEditOpen(true)} className="text-[11px] text-brand-primary hover:text-brand-dark transition-colors">Reassign</button>
+                  )}
+                </div>
+                {post.assignee ? (
+                  <div className="flex items-center gap-2 text-[14px] text-ink font-medium">
+                    <Avatar user={post.assignee} size={20} />
+                    {post.assignee.name}
+                  </div>
+                ) : (
+                  <div className="text-[13px] text-ink-ghost italic">Unassigned</div>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Activity */}

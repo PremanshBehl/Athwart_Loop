@@ -108,9 +108,14 @@ export class WorkflowService {
       auditActions.push({ actionType: 'POST_ACKNOWLEDGED', metadata: { from: Status.OPEN, to: Status.DISCUSSING } });
 
     } else if (currentStatus === Status.DISCUSSING && newStatus === Status.RESOLVED) {
-      const canResolve = canActAsOwner || isAssignee || (post.type === Type.QUESTION && isAuthor);
-      if (!canResolve) {
-        throw new AppError('Only the owner (or author for questions) can resolve this post.', StatusCodes.FORBIDDEN, 'FORBIDDEN');
+      if (post.isUseCase) {
+        if (!canActAsOwner) throw new AppError('Only the routing owner or admin can resolve a Use Case.', StatusCodes.FORBIDDEN, 'FORBIDDEN');
+      } else if (post.type === Type.QUESTION) {
+        if (!(isAuthor || isAssignee || isGlobalAdmin)) throw new AppError('Only the author, assignee, or admin can resolve a Question.', StatusCodes.FORBIDDEN, 'FORBIDDEN');
+      } else if (post.type === Type.PROBLEM) {
+        if (!(isAssignee || isOwner || isGlobalAdmin)) throw new AppError('Only the assignee, routing owner, or admin can resolve a Problem.', StatusCodes.FORBIDDEN, 'FORBIDDEN');
+      } else if (post.type === Type.IDEA) {
+        if (!isGlobalAdmin) throw new AppError('Only the founder or admin can resolve an Idea.', StatusCodes.FORBIDDEN, 'FORBIDDEN');
       }
       validateResolutionPayload(post, payload);
       dataToUpdate.resolution = payload!.resolution;
@@ -127,9 +132,14 @@ export class WorkflowService {
 
     } else if (currentStatus === Status.OPEN && newStatus === Status.RESOLVED) {
       // Fast-close
-      const canResolve = canActAsOwner || isAssignee || (post.type === Type.QUESTION && isAuthor);
-      if (!canResolve) {
-        throw new AppError('Only the owner (or author for questions) can fast-resolve this post.', StatusCodes.FORBIDDEN, 'FORBIDDEN');
+      if (post.isUseCase) {
+        if (!canActAsOwner) throw new AppError('Only the routing owner or admin can fast-resolve a Use Case.', StatusCodes.FORBIDDEN, 'FORBIDDEN');
+      } else if (post.type === Type.QUESTION) {
+        if (!(isAuthor || isAssignee || isGlobalAdmin)) throw new AppError('Only the author, assignee, or admin can fast-resolve a Question.', StatusCodes.FORBIDDEN, 'FORBIDDEN');
+      } else if (post.type === Type.PROBLEM) {
+        if (!(isAssignee || isOwner || isGlobalAdmin)) throw new AppError('Only the assignee, routing owner, or admin can fast-resolve a Problem.', StatusCodes.FORBIDDEN, 'FORBIDDEN');
+      } else if (post.type === Type.IDEA) {
+        if (!isGlobalAdmin) throw new AppError('Only the founder or admin can fast-resolve an Idea.', StatusCodes.FORBIDDEN, 'FORBIDDEN');
       }
       validateResolutionPayload(post, payload);
       if (!post.acknowledgedAt) {
@@ -171,9 +181,14 @@ export class WorkflowService {
     // is still unowned, claim it in a single guarded write. If another actor beat
     // us to it, updateMany.count is 0 and we simply proceed with the existing owner
     // — no lost-update, no need for serializable isolation.
+    // 
+    // Fallback logic: Under the new Author-Designated Resolver Flow, the assignee
+    // is the primary responsible party. We only auto-claim ownership if the post
+    // has no assignee (e.g. routing fallback) and is still unowned.
     const shouldClaimOwner =
       (newStatus === Status.DISCUSSING || newStatus === Status.RESOLVED) &&
       !post.ownerId &&
+      !post.assigneeId &&
       canActAsOwner;
     if (shouldClaimOwner) {
       await prisma.post.updateMany({

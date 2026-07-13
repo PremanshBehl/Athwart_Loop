@@ -307,8 +307,8 @@ export const updatePost = async (req: Request, res: Response) => {
     throw new AppError('Post not found', StatusCodes.NOT_FOUND, 'POST_NOT_FOUND');
   }
 
-  if (existing.authorId !== userId) {
-    throw new AppError('Forbidden. You can only edit your own posts.', StatusCodes.FORBIDDEN, 'FORBIDDEN');
+  if (existing.authorId !== userId && req.user!.role !== 'ADMIN' && req.user!.role !== 'FOUNDER') {
+    throw new AppError('Forbidden. You can only edit your own posts or must be an admin.', StatusCodes.FORBIDDEN, 'FORBIDDEN');
   }
 
   // Handle attachment removal (supports single or multiple IDs from multipart form)
@@ -361,8 +361,23 @@ export const updatePost = async (req: Request, res: Response) => {
   if (category !== undefined) updateData.category = category;
   if (tags !== undefined) updateData.tags = tags;
   if (priority !== undefined) updateData.priority = priority;
-  if (assigneeId !== undefined) updateData.assigneeId = assigneeId;
   if (departmentId !== undefined) updateData.departmentId = departmentId;
+
+  const assigneeChanged = assigneeId !== undefined && assigneeId !== existing.assigneeId;
+  if (assigneeChanged) {
+    if (existing.type === 'IDEA' && assigneeId !== null && assigneeId !== '') {
+      throw new AppError('Ideas cannot have an assignee.', StatusCodes.BAD_REQUEST, 'INVALID_ASSIGNEE');
+    }
+    updateData.assigneeId = assigneeId ? Number(assigneeId) : null;
+    if (assigneeId) {
+      if (!existing.acknowledgedAt) {
+        updateData.acknowledgedAt = new Date();
+      }
+      if (existing.status === 'OPEN') {
+        updateData.status = 'DISCUSSING';
+      }
+    }
+  }
 
   const departmentChanged =
     departmentId !== undefined && departmentId !== existing.departmentId;
@@ -392,6 +407,21 @@ export const updatePost = async (req: Request, res: Response) => {
           entityType: 'POST',
           entityId: id,
           metadata: { from: existing.departmentId, to: departmentId },
+        },
+      }),
+    );
+  }
+
+  if (assigneeChanged) {
+    ops.push(
+      prisma.auditLog.create({
+        data: {
+          actorId: userId,
+          postId: id,
+          actionType: 'ASSIGNEE_CHANGED',
+          entityType: 'POST',
+          entityId: id,
+          metadata: { from: existing.assigneeId, to: assigneeId ? Number(assigneeId) : null },
         },
       }),
     );
@@ -539,15 +569,20 @@ export const getStats = async (req: Request, res: Response) => {
   const [totalActive, myActiveTasks, needReview, completed] = await Promise.all([
     // Total active posts across the entire platform
     prisma.post.count({ where: { status: { not: Status.RESOLVED } } }),
-    // Tasks assigned to me (owned) that are not RESOLVED
-    prisma.post.count({ where: { ownerId: userId, status: { not: Status.RESOLVED } } }),
+    // Tasks assigned to me (owned or assignee) that are not RESOLVED
+    prisma.post.count({
+      where: {
+        OR: [{ ownerId: userId }, { assigneeId: userId }],
+        status: { not: Status.RESOLVED },
+      },
+    }),
     // Posts waiting for review (we can use OPEN as an approximation for now)
     prisma.post.count({ where: { status: Status.OPEN } }),
     // Total posts I have authored or been assigned to that are RESOLVED
     prisma.post.count({
       where: {
         status: Status.RESOLVED,
-        OR: [{ authorId: userId }, { ownerId: userId }],
+        OR: [{ authorId: userId }, { ownerId: userId }, { assigneeId: userId }],
       },
     }),
   ]);

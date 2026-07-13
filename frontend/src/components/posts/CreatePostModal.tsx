@@ -308,18 +308,27 @@ const CreatePostModal: React.FC<Props> = ({ isOpen, onClose, post }) => {
                 {SECTIONS.map((s) => <option key={s} value={s}>{SECTION_LABEL[s]}</option>)}
               </select>
             </div>
-            <div className="flex-1">
-              <label className="block text-[13px] font-semibold mb-1.5">Assignee <span className="text-ink-whisper font-normal">(optional)</span></label>
-              <select
-                value={form.assigneeId}
-                onChange={(e) => setForm({ ...form, assigneeId: e.target.value })}
-                className="w-full px-3 py-2.5 rounded-[10px] text-[14px] bg-white focus:outline-none"
-                style={inputStyle}
-              >
-                <option value="">Unassigned</option>
-                {users.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
-              </select>
-            </div>
+            {form.type !== 'IDEA' ? (
+              <div className="flex-1">
+                <label className="block text-[13px] font-semibold mb-1.5">
+                  {form.type === 'QUESTION' ? 'Assign to answer ' : 'Who will fix this? '}<span className="text-ink-whisper font-normal">(optional{form.type === 'QUESTION' ? ' — leave blank to answer yourself' : ' — defaults to section owner'})</span>
+                </label>
+                <select
+                  value={form.assigneeId}
+                  onChange={(e) => setForm({ ...form, assigneeId: e.target.value })}
+                  className="w-full px-3 py-2.5 rounded-[10px] text-[14px] bg-white focus:outline-none"
+                  style={inputStyle}
+                >
+                  <option value="">Unassigned</option>
+                  {users.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
+                </select>
+              </div>
+            ) : (
+              <div className="flex-1">
+                <label className="block text-[13px] font-semibold mb-1.5 text-ink-ghost">Assignee</label>
+                <div className="text-[13px] text-ink-ghost italic py-2">Ideas are reviewed and decided by the Founder.</div>
+              </div>
+            )}
             <div className="flex-1 flex items-end">
               <label className="flex items-center gap-2.5 text-[14px] text-ink-soft cursor-pointer pb-2.5">
                 <input

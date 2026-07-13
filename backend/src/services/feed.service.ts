@@ -69,7 +69,10 @@ export class FeedService {
       // By default, exclude archived/completed posts from the main feed
       where.status = { not: 'RESOLVED' };
     }
-    if (ownerId) where.ownerId = ownerId;
+    if (ownerId) {
+      where.OR = where.OR || [];
+      where.OR.push({ ownerId: ownerId }, { assigneeId: ownerId });
+    }
     if (authorId) where.authorId = authorId;
     if (departmentId) where.departmentId = departmentId;
     if (campaignId) where.campaignId = campaignId;
