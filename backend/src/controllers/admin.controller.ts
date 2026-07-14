@@ -1,6 +1,5 @@
 import { Request, Response } from 'express';
 import { StatusCodes } from 'http-status-codes';
-import { Section } from '@prisma/client';
 import prisma from '../config/db';
 import { AppError } from '../utils/AppError';
 import { successResponse } from '../utils/response.util';
@@ -12,72 +11,6 @@ function requireAdmin(req: Request) {
     throw new AppError('Admin/Founder only', StatusCodes.FORBIDDEN, 'FORBIDDEN');
   }
 }
-
-const SECTIONS: Section[] = [
-  'BILLS', 'INVOICING', 'PATIENTS', 'CASES', 'PARTNERS',
-  'HOSPITALS', 'DOCTORS', 'WHATSAPP', 'PLATFORM', 'GENERAL',
-];
-
-/* ---------- SECTION OWNERSHIP (handbook B7) ---------- */
-
-export const listSectionOwners = async (req: Request, res: Response) => {
-  requireAdmin(req);
-  const rows = await prisma.sectionOwnership.findMany({
-    include: { owner: { select: { id: true, name: true, role: true, avatarUrl: true } } },
-  });
-  const bySection = new Map(rows.map((r) => [r.section, r]));
-  const items = SECTIONS.map((s) => {
-    const r = bySection.get(s);
-    return {
-      section: s,
-      owner:   r?.owner ?? null,
-    };
-  });
-  return successResponse(res, 'Section owners retrieved', items);
-};
-
-export const setSectionOwner = async (req: Request, res: Response) => {
-  requireAdmin(req);
-  const section = req.params.section as Section;
-  if (!SECTIONS.includes(section)) {
-    throw new AppError('Unknown section', StatusCodes.BAD_REQUEST, 'INVALID_SECTION');
-  }
-  const ownerId = Number(req.body?.ownerId);
-  if (!Number.isInteger(ownerId) || ownerId <= 0) {
-    throw new AppError('ownerId must be a positive integer', StatusCodes.BAD_REQUEST, 'INVALID_OWNER');
-  }
-  const owner = await prisma.user.findUnique({ where: { id: ownerId }, select: { id: true, name: true } });
-  if (!owner) throw new AppError('User not found', StatusCodes.NOT_FOUND, 'USER_NOT_FOUND');
-
-  // Audit trail: section ownership is a privileged operation — record actor and delta.
-  const prior = await prisma.sectionOwnership.findUnique({
-    where: { section },
-    select: { ownerId: true },
-  });
-
-  const [row] = await prisma.$transaction([
-    prisma.sectionOwnership.upsert({
-      where:  { section },
-      create: { section, ownerId },
-      update: { ownerId },
-      include: { owner: { select: { id: true, name: true, role: true, avatarUrl: true } } },
-    }),
-    prisma.auditLog.create({
-      data: {
-        actorId: req.user!.id,
-        actionType: 'ASSIGNED',
-        entityType: 'WORKFLOW',
-        entityId: ownerId,
-        metadata: { kind: 'SECTION_OWNER', section, fromOwnerId: prior?.ownerId ?? null, toOwnerId: ownerId },
-      },
-    }),
-  ]);
-
-  return successResponse(res, `Section ${section} owner updated`, {
-    section: row.section,
-    owner:   row.owner,
-  });
-};
 
 /* ---------- KB SWEEP (handbook B6) ---------- */
 

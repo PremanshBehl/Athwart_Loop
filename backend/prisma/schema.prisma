@@ -83,7 +83,6 @@ model User {
   posts         Post[]     @relation("AuthorPosts")
   assignedPosts Post[]     @relation("AssigneePosts")
   ownedPosts    Post[]     @relation("OwnerPosts")
-  sectionOwnerships SectionOwnership[]
   comments      Comment[]
   reactions     Reaction[]
   votes         Vote[]
@@ -333,13 +332,6 @@ model AuditLog {
   @@index([postId, createdAt, id])
   @@index([actorId, createdAt])
   @@index([actionType, createdAt])
-}
-
-model SectionOwnership {
-  id       Int     @id @default(autoincrement())
-  section  Section @unique
-  ownerId  Int
-  owner    User    @relation(fields: [ownerId], references: [id])
 }
 
 // ============================================

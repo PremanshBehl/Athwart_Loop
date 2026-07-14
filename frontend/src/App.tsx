@@ -13,7 +13,6 @@ import ProfilePage from '@/pages/ProfilePage';
 import PostDetailPage from '@/pages/PostDetailPage';
 import RoleManagementPage from '@/pages/RoleManagementPage';
 import AdminLoopHealthPage from '@/pages/AdminLoopHealthPage';
-import AdminSectionOwnersPage from '@/pages/AdminSectionOwnersPage';
 import AdminKbSweepPage from '@/pages/AdminKbSweepPage';
 import AdminCampaignsPage from '@/pages/AdminCampaignsPage';
 import CampaignsPage from '@/pages/CampaignsPage';
@@ -43,7 +42,6 @@ const App: React.FC = () => (
           <Route element={<AdminRoute />}>
             <Route path="/admin/roles" element={<RoleManagementPage />} />
             <Route path="/admin/loop-health"    element={<AdminLoopHealthPage />} />
-            <Route path="/admin/section-owners" element={<AdminSectionOwnersPage />} />
             <Route path="/admin/kb-sweep"       element={<AdminKbSweepPage />} />
             <Route path="/admin/campaigns"      element={<AdminCampaignsPage />} />
           </Route>

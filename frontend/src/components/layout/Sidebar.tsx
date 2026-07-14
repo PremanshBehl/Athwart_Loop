@@ -11,7 +11,6 @@ import {
   User as UserIcon,
   Activity,
   Shield,
-  Users,
   LogOut,
   X,
 } from 'lucide-react';
@@ -40,7 +39,6 @@ const PRIMARY = [
 
 const ADMIN_NAV = [
   { to: '/admin/loop-health',    icon: Activity, label: 'Loop Health' },
-  { to: '/admin/section-owners', icon: Users,    label: 'Section Owners' },
   { to: '/admin/roles',          icon: Shield,   label: 'Role Management' },
 ] as const;
 
