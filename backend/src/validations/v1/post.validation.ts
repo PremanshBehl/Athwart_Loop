@@ -13,6 +13,9 @@ export const createPostSchema = z.object({
     campaignId: z.preprocess((val) => (val === '' || val === null || val === undefined ? undefined : Number(val)), z.number().int().positive().optional()),
     assigneeId: z.preprocess((val) => (val === '' || val === null || val === undefined ? undefined : Number(val)), z.number().int().positive().optional()),
   }).strict()
+}).refine(data => data.body.type === 'IDEA' || data.body.assigneeId, {
+  message: "Assignee is required for this post type",
+  path: ["body", "assigneeId"],
 });
 
 export const updatePostStatusSchema = z.object({

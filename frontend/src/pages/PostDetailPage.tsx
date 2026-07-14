@@ -86,7 +86,7 @@ const PostDetailPage: React.FC = () => {
 
   let canResolve = false;
   if (post.type === 'QUESTION') canResolve = isAuthor || isAssignee || isAdmin;
-  else if (post.type === 'PROBLEM') canResolve = isAssignee || isOwner || isAdmin;
+  else if (post.type === 'PROBLEM') canResolve = isAssignee || isAdmin;
   else if (post.type === 'IDEA') canResolve = isFounder || isAdmin;
   else if (post.type === 'USE_CASE') canResolve = canActAsOwner;
 

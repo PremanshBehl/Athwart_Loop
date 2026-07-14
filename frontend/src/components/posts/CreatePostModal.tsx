@@ -139,6 +139,10 @@ const CreatePostModal: React.FC<Props> = ({ isOpen, onClose, post }) => {
     const fe: typeof fieldErr = {};
     if (form.title.trim().length < 3) fe.title = 'Title must be at least 3 characters';
     if (form.description.trim().length < 1) fe.description = 'Description is required';
+    if (form.type !== 'IDEA' && !form.assigneeId) {
+      setError('Assignee is required');
+      return;
+    }
     if (Object.keys(fe).length) { setFieldErr(fe); return; }
     setFieldErr({}); setError(''); setLoading(true);
     try {
@@ -311,15 +315,16 @@ const CreatePostModal: React.FC<Props> = ({ isOpen, onClose, post }) => {
             {form.type !== 'IDEA' ? (
               <div className="flex-1">
                 <label className="block text-[13px] font-semibold mb-1.5">
-                  {form.type === 'QUESTION' ? 'Assign to answer ' : 'Who will fix this? '}<span className="text-ink-whisper font-normal">(optional{form.type === 'QUESTION' ? ' — leave blank to answer yourself' : ' — defaults to section owner'})</span>
+                  {form.type === 'QUESTION' ? 'Assign to answer' : 'Who will fix this?'}
                 </label>
                 <select
                   value={form.assigneeId}
                   onChange={(e) => setForm({ ...form, assigneeId: e.target.value })}
                   className="w-full px-3 py-2.5 rounded-[10px] text-[14px] bg-white focus:outline-none"
                   style={inputStyle}
+                  required
                 >
-                  <option value="">Unassigned</option>
+                  <option value="" disabled>Select an assignee</option>
                   {users.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
                 </select>
               </div>

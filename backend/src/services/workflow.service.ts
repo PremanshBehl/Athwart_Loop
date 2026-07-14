@@ -113,7 +113,7 @@ export class WorkflowService {
       } else if (post.type === Type.QUESTION) {
         if (!(isAuthor || isAssignee || isGlobalAdmin)) throw new AppError('Only the author, assignee, or admin can resolve a Question.', StatusCodes.FORBIDDEN, 'FORBIDDEN');
       } else if (post.type === Type.PROBLEM) {
-        if (!(isAssignee || isOwner || isGlobalAdmin)) throw new AppError('Only the assignee, routing owner, or admin can resolve a Problem.', StatusCodes.FORBIDDEN, 'FORBIDDEN');
+        if (!(isAssignee || isGlobalAdmin)) throw new AppError('Only the assignee or admin can resolve a Problem.', StatusCodes.FORBIDDEN, 'FORBIDDEN');
       } else if (post.type === Type.IDEA) {
         if (!isGlobalAdmin) throw new AppError('Only the founder or admin can resolve an Idea.', StatusCodes.FORBIDDEN, 'FORBIDDEN');
       }
@@ -137,7 +137,7 @@ export class WorkflowService {
       } else if (post.type === Type.QUESTION) {
         if (!(isAuthor || isAssignee || isGlobalAdmin)) throw new AppError('Only the author, assignee, or admin can fast-resolve a Question.', StatusCodes.FORBIDDEN, 'FORBIDDEN');
       } else if (post.type === Type.PROBLEM) {
-        if (!(isAssignee || isOwner || isGlobalAdmin)) throw new AppError('Only the assignee, routing owner, or admin can fast-resolve a Problem.', StatusCodes.FORBIDDEN, 'FORBIDDEN');
+        if (!(isAssignee || isGlobalAdmin)) throw new AppError('Only the assignee or admin can fast-resolve a Problem.', StatusCodes.FORBIDDEN, 'FORBIDDEN');
       } else if (post.type === Type.IDEA) {
         if (!isGlobalAdmin) throw new AppError('Only the founder or admin can fast-resolve an Idea.', StatusCodes.FORBIDDEN, 'FORBIDDEN');
       }
