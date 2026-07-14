@@ -77,9 +77,9 @@ const PostDetailPage: React.FC = () => {
     );
   }
 
-  const isAuthor = user?.id === post.authorId;
-  const isOwner = user?.id === post.ownerId;
-  const isAssignee = user?.id === post.assigneeId;
+  const isAuthor = user?.id === (post.authorId || post.author?.id);
+  const isOwner = user?.id === (post.ownerId || post.owner?.id);
+  const isAssignee = user?.id === (post.assigneeId || post.assignee?.id);
   const isAdmin = user?.role === 'FOUNDER' || user?.role === 'ADMIN';
   const isFounder = user?.role === 'FOUNDER';
   const canActAsOwner = isOwner || isAdmin;
