@@ -334,17 +334,6 @@ const CreatePostModal: React.FC<Props> = ({ isOpen, onClose, post }) => {
                 <div className="text-[13px] text-ink-ghost italic py-2">Ideas are reviewed and decided by the Founder.</div>
               </div>
             )}
-            <div className="flex-1 flex items-end">
-              <label className="flex items-center gap-2.5 text-[14px] text-ink-soft cursor-pointer pb-2.5">
-                <input
-                  type="checkbox"
-                  checked={form.isUseCase}
-                  onChange={(e) => setForm({ ...form, isUseCase: e.target.checked })}
-                  style={{ width: 17, height: 17, accentColor: '#8018de' }}
-                />
-                Mark as use case
-              </label>
-            </div>
           </div>
 
           {/* CRM link (optional) */}
