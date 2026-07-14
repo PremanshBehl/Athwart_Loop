@@ -75,11 +75,6 @@ const LoginPage: React.FC = () => {
               placeholder="••••••••"
               autoComplete="current-password"
               error={fieldErrors.password}
-              labelRight={
-                <Link to="/forgot-password" style={{ fontSize: '13.5px', fontWeight: 600, color: '#8018de' }}>
-                  Forgot?
-                </Link>
-              }
             />
 
             <button
