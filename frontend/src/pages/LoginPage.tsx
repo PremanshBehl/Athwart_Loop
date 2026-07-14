@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '@/stores/auth.store';
 import AuthBrandPanel from '@/components/auth/AuthBrandPanel';
-
+import AuthField from '@/components/auth/AuthField';
 
 const LoginPage: React.FC = () => {
   const { login, loading } = useAuthStore();
@@ -10,6 +10,7 @@ const LoginPage: React.FC = () => {
   const [form, setForm] = useState({ email: '', password: '' });
   const [error, setError] = useState('');
   const [fieldErrors, setFieldErrors] = useState<{ email?: string; password?: string }>({});
+  const [btnHover, setBtnHover] = useState(false);
 
   const attempt = async (email: string, password: string) => {
     setError('');
@@ -32,13 +33,20 @@ const LoginPage: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen w-full grid" style={{ background: '#f6f4fa', gridTemplateColumns: 'minmax(0, 1.05fr) minmax(0, 0.95fr)' }}>
+    <div className="min-h-screen w-full flex flex-col lg:flex-row">
       <AuthBrandPanel />
 
-      <div className="flex items-center justify-center p-10">
-        <div className="w-full max-w-[400px]">
-          <h2 className="font-serif text-[36px] text-[#202020] mb-2 font-medium">Welcome back</h2>
-          <p className="text-[#606060] mb-8 text-[16px]">Sign in to your Athwart Loop workspace.</p>
+      <section
+        className="flex-1 lg:flex-[1_1_48%] min-w-0 flex items-center justify-center"
+        style={{ background: '#f6f3fb', padding: '48px 40px' }}
+      >
+        <div className="w-full" style={{ maxWidth: '400px' }}>
+          <h2 className="font-heading" style={{ fontWeight: 700, fontSize: '38px', lineHeight: 1.1, margin: '0 0 10px', color: '#1e1a24' }}>
+            Welcome back
+          </h2>
+          <p style={{ fontSize: '16px', color: '#737373', margin: '0 0 36px' }}>
+            Sign in to your Athwart Loop workspace.
+          </p>
 
           {error && (
             <div className="mb-4 rounded-[10px] px-3.5 py-2.5 text-sm" style={{ background: '#fff0eb', border: '1px solid #f9c3ad', color: '#b23c12' }}>
@@ -47,52 +55,64 @@ const LoginPage: React.FC = () => {
           )}
 
           <form onSubmit={handleSubmit} noValidate>
-            <label className="block text-[14px] font-semibold text-[#202020] mb-2">Email</label>
-            <input
+            <AuthField
+              id="aw-email"
+              label="Email"
               type="email"
               value={form.email}
-              onChange={(e) => setForm({ ...form, email: e.target.value })}
+              onChange={(v) => setForm({ ...form, email: v })}
               placeholder="you@athwart.ai"
-              className="w-full px-4 py-3.5 rounded-[12px] text-[15px] focus:outline-none mb-1"
-              style={{ border: '1px solid #e0e0e0', background: '#fff' }}
+              autoComplete="username"
+              error={fieldErrors.email}
             />
-            <div className="h-[20px] text-[12px] mb-2" style={{ color: '#f15d24' }}>{fieldErrors.email || ''}</div>
 
-            <div className="flex justify-between items-end mb-2">
-              <label className="block text-[14px] font-semibold text-[#202020]">Password</label>
-              <Link to="/forgot-password" className="text-[13px] font-semibold" style={{ color: '#8018de' }}>Forgot?</Link>
-            </div>
-            <div className="relative mb-1">
-              <input
-                type="password"
-                value={form.password}
-                onChange={(e) => setForm({ ...form, password: e.target.value })}
-                placeholder="••••••••"
-                className="w-full px-4 py-3.5 rounded-[12px] text-[15px] focus:outline-none"
-                style={{ border: '1px solid #e0e0e0', background: '#fff' }}
-              />
-              <button type="button" className="absolute right-4 top-1/2 -translate-y-1/2 text-[11px] font-bold tracking-wider text-gray-400 hover:text-gray-600">SHOW</button>
-            </div>
-            <div className="h-[20px] text-[12px] mb-4" style={{ color: '#f15d24' }}>{fieldErrors.password || ''}</div>
+            <AuthField
+              id="aw-pw"
+              label="Password"
+              type="password"
+              value={form.password}
+              onChange={(v) => setForm({ ...form, password: v })}
+              placeholder="••••••••"
+              autoComplete="current-password"
+              error={fieldErrors.password}
+              labelRight={
+                <Link to="/forgot-password" style={{ fontSize: '13.5px', fontWeight: 600, color: '#8018de' }}>
+                  Forgot?
+                </Link>
+              }
+            />
 
             <button
               type="submit"
               disabled={loading}
-              className="w-full py-4 rounded-[12px] font-semibold text-[16px] text-white transition-colors mt-2"
-              style={{ background: loading ? '#a875df' : '#8018de', boxShadow: '0 4px 14px rgba(128, 24, 222, 0.3)' }}
+              onMouseEnter={() => setBtnHover(true)}
+              onMouseLeave={() => setBtnHover(false)}
+              className="w-full font-sans text-white"
+              style={{
+                height: '54px',
+                marginTop: '20px',
+                background: loading ? '#a875df' : btnHover ? '#6a11bd' : '#8018de',
+                fontSize: '17px',
+                fontWeight: 700,
+                border: 'none',
+                borderRadius: '12px',
+                cursor: loading ? 'default' : 'pointer',
+                boxShadow: '0 10px 24px rgba(128,24,222,0.28)',
+                transition: 'background .15s, transform .1s',
+              }}
             >
               {loading ? 'Signing in…' : 'Sign in'}
             </button>
           </form>
 
-          <div className="text-center mt-6 text-[15px] text-[#606060]">
+          <p style={{ textAlign: 'center', fontSize: '15px', color: '#737373', margin: '36px 0 0' }}>
             New to Athwart?{' '}
-            <Link to="/register" className="font-semibold" style={{ color: '#8018de' }}>
+            <Link to="/register" style={{ fontWeight: 700, color: '#8018de' }}>
               Create one
             </Link>
-          </div>
+          </p>
         </div>
-      </div>
+      </section>
     </div>
   );
 };
