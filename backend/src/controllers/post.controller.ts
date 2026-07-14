@@ -12,7 +12,7 @@ import { semanticSearchService } from '../services/search/semantic-search.servic
 
 /* ---------- CREATE POST ---------- */
 export const createPost = async (req: Request, res: Response) => {
-  const { title, description, type, section, isUseCase, linkedEntityType, linkedEntityId, campaignId } = req.body;
+  const { title, description, type, section, isUseCase, linkedEntityType, linkedEntityId, campaignId, assigneeId } = req.body;
   const authorId = req.user!.id;
 
   // Handbook B8: only allow tagging to an ACTIVE campaign. Silently drop otherwise.
@@ -68,6 +68,7 @@ export const createPost = async (req: Request, res: Response) => {
         campaignId: resolvedCampaignId,
         ownerId,
         authorId,
+        assigneeId: assigneeId ? Number(assigneeId) : undefined,
         status: Status.OPEN,
         attachments: attachmentData ? {
           create: [{

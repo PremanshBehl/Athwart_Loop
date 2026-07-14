@@ -11,6 +11,7 @@ export const createPostSchema = z.object({
     linkedEntityId: z.string().max(64, 'Reference ID too long').optional(),
     departmentId: z.preprocess((val) => (val ? Number(val) : undefined), z.number().int().positive().optional().nullable()),
     campaignId: z.preprocess((val) => (val === '' || val === null || val === undefined ? undefined : Number(val)), z.number().int().positive().optional()),
+    assigneeId: z.preprocess((val) => (val === '' || val === null || val === undefined ? undefined : Number(val)), z.number().int().positive().optional()),
   }).strict()
 });
 
