@@ -292,12 +292,7 @@ const PostDetailPage: React.FC = () => {
                 <Avatar user={owner} size={24} /> {owner ? owner.name : 'Unassigned'}
               </div>
             </div>
-            <div>
-              <div className="text-[12px] text-ink-whisper font-semibold mb-1.5">ASSIGNEE</div>
-              <div className="flex items-center gap-2 text-[14px] text-ink font-medium">
-                {post.assignee ? (<><Avatar user={post.assignee} size={24} /> {post.assignee.name}</>) : (<span className="text-ink-ghost">— No assignee</span>)}
-              </div>
-            </div>
+
             <div className="flex gap-5">
               <div>
                 <div className="text-[12px] text-ink-whisper font-semibold mb-1.5">SLA</div>
