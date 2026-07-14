@@ -88,34 +88,24 @@ const ResolveModal: React.FC<Props> = ({ isOpen, onClose, postId, postType, isUs
         <div className="px-[26px] py-[22px]">
           <label className="block text-[13px] font-semibold mb-2">Resolution</label>
           <div className="grid grid-cols-2 gap-2 mb-4">
-            {RESOLUTIONS.map((r) => {
+            {RESOLUTIONS.filter(r => {
+              if (isUseCase) return r === 'RULE_DECIDED';
+              if (postType === 'QUESTION') return r === 'ANSWERED';
+              if (postType === 'PROBLEM') return ['FIXED', 'PARKED', 'DECLINED'].includes(r);
+              if (postType === 'IDEA') return ['APPROVED', 'PARKED', 'DECLINED'].includes(r);
+              return false;
+            }).map((r) => {
               const on = resolution === r;
-              let isValidForType = true;
-              if (isUseCase) {
-                isValidForType = r === 'RULE_DECIDED';
-              } else {
-                if (postType === 'QUESTION') {
-                  isValidForType = ['ANSWERED', 'DUPLICATE'].includes(r);
-                } else if (postType === 'PROBLEM') {
-                  isValidForType = ['FIXED', 'PARKED', 'DECLINED', 'DUPLICATE'].includes(r);
-                } else if (postType === 'IDEA') {
-                  isValidForType = ['APPROVED', 'PARKED', 'DECLINED', 'DUPLICATE'].includes(r);
-                }
-              }
-              const dis = !isValidForType;
               return (
                 <button
                   key={r}
                   type="button"
-                  disabled={dis}
                   onClick={() => { setResolution(r); setError(''); }}
                   className="p-2.5 rounded-[10px] text-[13.5px] font-semibold text-left transition-colors"
                   style={{
                     border: `1.5px solid ${on ? '#8018de' : '#e8e3f0'}`,
                     background: on ? '#f3ecfd' : '#fff',
                     color: on ? '#6a0fc0' : '#5a5266',
-                    opacity: dis ? 0.4 : 1,
-                    cursor: dis ? 'not-allowed' : 'pointer',
                   }}
                 >
                   {RES_LABEL[r]}
